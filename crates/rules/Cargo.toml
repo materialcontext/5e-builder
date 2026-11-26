@@ -1,7 +1,13 @@
 [package]
 name = "rules"
+description = "Pure 5e rules engine: choice expansion, validation and derived sheet."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 
 [dependencies]
+compendium.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

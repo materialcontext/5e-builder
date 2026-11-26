@@ -116,6 +116,8 @@ pub enum Options {
     Spells(SpellFilter),
     OptionalFeatures { types: Vec<String> },
     Subclass { class: Key },
+    /// A lineage/variant of a species.
+    Lineage { species: Key },
     Resist(Vec<String>),
     /// Weapons whose mastery property you can use.
     WeaponMastery,
@@ -233,6 +235,7 @@ impl Options {
             Options::Spells(_) => "spell".into(),
             Options::OptionalFeatures { .. } => "option".into(),
             Options::Subclass { .. } => "subclass".into(),
+            Options::Lineage { .. } => "lineage".into(),
             Options::Resist(_) => "damage resistance".into(),
             Options::WeaponMastery => "weapon mastery".into(),
             Options::Items { .. } => "item".into(),

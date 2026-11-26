@@ -559,7 +559,8 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
     }
 
     let mut out_classes = Vec::new();
-    for c in classes.iter().filter_map(Value::as_object) {
+    // Sidekick classes are NPC companions, not player options.
+    for c in classes.iter().filter_map(Value::as_object).filter(|c| c.get("isSidekick").and_then(Value::as_bool) != Some(true)) {
         let name = s(c, "name").to_string();
         let source = s(c, "source").to_string();
         let key = Key::new(&name, &source);
@@ -646,7 +647,7 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             "" => "phb",
             x => x,
         });
-        let legacy_class = out_classes.iter().find(|c| c.key == class_key).map(|c| c.legacy).unwrap_or(true);
+        let Some(legacy_class) = out_classes.iter().find(|c| c.key == class_key).map(|c| c.legacy) else { continue };
         let ctx = FeatureCtx { refs: &refs, legacy_class };
         let mut features = Vec::new();
         for (i, uid) in sc.get("subclassFeatures").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).enumerate() {

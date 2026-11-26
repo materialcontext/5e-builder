@@ -51,6 +51,11 @@ dependencies = [
 [[package]]
 name = "rules"
 version = "0.1.0"
+dependencies = [
+ "compendium",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "serde"
