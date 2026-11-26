@@ -1,0 +1,4 @@
+/target
+/data/
+/crates/web/dist
+/crates/web/public/compendium*.json

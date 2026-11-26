@@ -1,0 +1,10 @@
+[package]
+name = "compendium"
+description = "Normalized 5e content model (species, classes, spells, ...) shared by the importer, rules engine and UI."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
