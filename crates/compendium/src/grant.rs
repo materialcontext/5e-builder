@@ -23,6 +23,9 @@ pub enum Grant {
     Immune(String),
     CondImmune(String),
     Darkvision(u16),
+    /// Blindsight, truesight, tremorsense (darkvision uses [`Grant::Darkvision`]).
+    Sense { sense: String, range: u16 },
+    Vulnerable(String),
     /// Extra hit points per character level (Tough, Dwarven Toughness).
     HpPerLevel(i8),
     Feature(Feature),
@@ -98,6 +101,10 @@ pub enum Options {
     AnySkill,
     /// Expertise in a skill the character is already proficient in.
     SkillExpertise,
+    /// Expertise in one of these skills (must be proficient).
+    ExpertiseFrom(Vec<Skill>),
+    /// Saving throw proficiencies.
+    Saves(Vec<Ability>),
     Tools(Vec<String>),
     AnyTool,
     AnyArtisanTool,
@@ -110,7 +117,13 @@ pub enum Options {
     Weapons(Vec<String>),
     /// Ability bonuses: one pick per entry of `amounts`, all distinct.
     /// Pick `i` receives `amounts[i]`.
-    Abilities { from: Vec<Ability>, amounts: Vec<i8> },
+    Abilities {
+        from: Vec<Ability>,
+        amounts: Vec<i8>,
+        /// Raised score maximum for the chosen abilities (epic boons: 30).
+        #[serde(default)]
+        max: Option<u8>,
+    },
     /// Feats in any of these categories (empty: any feat).
     Feats { categories: Vec<String> },
     Spells(SpellFilter),
@@ -192,6 +205,8 @@ pub enum SpellKind {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SpellPick {
     Fixed(Key),
+    /// Every spell matching the filter (used for expanded spell lists).
+    All(SpellFilter),
     Choose { filter: SpellFilter, count: u8 },
 }
 
@@ -214,7 +229,8 @@ impl Options {
     pub fn noun(&self) -> String {
         match self {
             Options::Skills(_) | Options::AnySkill => "skill".into(),
-            Options::SkillExpertise => "skill expertise".into(),
+            Options::SkillExpertise | Options::ExpertiseFrom(_) => "skill expertise".into(),
+            Options::Saves(_) => "saving throw".into(),
             Options::Tools(_) | Options::AnyTool => "tool".into(),
             Options::AnyArtisanTool => "artisan's tool".into(),
             Options::AnyInstrument => "musical instrument".into(),
@@ -266,6 +282,8 @@ fn describe_one(g: &Grant) -> Option<String> {
         Grant::Immune(d) => format!("{} immunity", title_case(d)),
         Grant::CondImmune(d) => format!("Immune to {d}"),
         Grant::Darkvision(r) => format!("Darkvision {r} ft."),
+        Grant::Sense { sense, range } => format!("{} {range} ft.", title_case(sense)),
+        Grant::Vulnerable(d) => format!("{} vulnerability", title_case(d)),
         Grant::HpPerLevel(n) => format!("+{n} HP per level"),
         Grant::Feature(f) => f.name.clone(),
         Grant::Item { item, qty } => {
@@ -280,7 +298,7 @@ fn describe_one(g: &Grant) -> Option<String> {
             }
         }
         Grant::Coins(cp) => crate::core::format_coins(*cp),
-        Grant::Choose(Choice { options: Options::Abilities { from, amounts }, .. }) => {
+        Grant::Choose(Choice { options: Options::Abilities { from, amounts, .. }, .. }) => {
             let amts: Vec<String> = amounts.iter().map(|a| crate::core::signed(*a as i32)).collect();
             let from: Vec<&str> = from.iter().map(|a| a.abbr()).collect();
             if from.len() == 6 {

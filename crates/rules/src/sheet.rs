@@ -103,6 +103,9 @@ pub struct Sheet {
     pub resistances: Vec<String>,
     pub immunities: Vec<String>,
     pub condition_immunities: Vec<String>,
+    pub vulnerabilities: Vec<String>,
+    /// Special senses other than darkvision, e.g. "Blindsight 10 ft.".
+    pub senses: Vec<String>,
     pub attacks: Vec<Attack>,
     pub casting: Vec<Casting>,
     pub slots: [u8; 9],
@@ -419,6 +422,20 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
             Grant::CondImmune(s) => Some(s),
             _ => None,
         }),
+        vulnerabilities: collect(|g| match g {
+            Grant::Vulnerable(s) => Some(s),
+            _ => None,
+        }),
+        senses: {
+            let mut best: BTreeMap<String, u16> = BTreeMap::new();
+            for g in &build.grants {
+                if let Grant::Sense { sense, range } = &g.grant {
+                    let e = best.entry(title_case(sense)).or_default();
+                    *e = (*e).max(*range);
+                }
+            }
+            best.into_iter().map(|(k, v)| format!("{k} {v} ft.")).collect()
+        },
         attacks,
         casting,
         slots,

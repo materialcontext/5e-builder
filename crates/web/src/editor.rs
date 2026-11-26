@@ -65,18 +65,14 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
     let issues = Memo::new(move |_| ch.with(|c| build.with(|b| rules::issues(c, b, &c3))));
     let current = step_index(&step);
 
-    // Keep starting equipment in the inventory in sync with the equipment choices.
+    // Re-sync starting equipment only when the equipment *choices* change,
+    // so manual inventory edits are never undone.
     let c4 = comp.clone();
     Effect::new(move |_| {
-        let (items, coins) = build.with(|b| rules::starting_equipment(b, &c4));
         let pending_eq = build.with(|b| b.pending().any(|c| c.step == Step::Equipment));
-        let in_sync = ch.with(|c| {
-            let have: Vec<(Option<Key>, String, u16)> =
-                c.inventory.iter().filter(|i| i.starting).map(|i| (i.item.clone(), i.name.clone(), i.qty)).collect();
-            let want: Vec<(Option<Key>, String, u16)> = items.iter().map(|i| (i.item.clone(), i.name.clone(), i.qty)).collect();
-            have == want && (c.starting_equipment_applied || coins == 0)
-        });
-        if !pending_eq && !in_sync && ch.with(|c| !c.levels.is_empty()) {
+        let sig = ch.with(|c| build.with(|b| rules::starting_signature(c, b)));
+        let stale = ch.with(|c| c.starting_signature != sig && !c.levels.is_empty());
+        if !pending_eq && stale {
             let comp = c4.clone();
             ctx.edit(|c| rules::apply_starting_equipment(c, &comp));
         }

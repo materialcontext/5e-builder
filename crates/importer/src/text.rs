@@ -70,6 +70,7 @@ fn render_tag(inner: &str) -> String {
         "actTrigger" => "Trigger:".into(),
         "actResponse" => "Response:".into(),
         "scaledice" | "scaledamage" => parts.last().copied().unwrap_or("").to_string(),
+        "dice" | "damage" | "d20" | "autodice" => parts.get(1).filter(|s| !s.is_empty()).copied().unwrap_or(first).to_string(),
         "filter" | "book" | "adventure" | "5etools" | "link" | "footnote" | "homebrew" | "quickref" => first.to_string(),
         _ => {
             let shown = parts.get(2).filter(|s| !s.is_empty()).copied().unwrap_or(first);
@@ -306,5 +307,6 @@ mod tests {
         assert_eq!(strip("{@dc 15} and {@hit 5}"), "DC 15 and +5");
         assert_eq!(strip("{@i see {@item rope|phb}}"), "see rope");
         assert_eq!(strip("{@damage 1d6} Acid"), "1d6 Acid");
+        assert_eq!(strip("{@dice 5d4 × 10|5d4 × 10|Starting Gold}"), "5d4 × 10");
     }
 }

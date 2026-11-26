@@ -25,6 +25,11 @@ pub struct Character {
     pub coins: Coins,
     /// Whether starting equipment has been placed in the inventory.
     pub starting_equipment_applied: bool,
+    /// Signature of the starting-equipment selections last applied; the
+    /// inventory is re-synced only when it changes, so manual edits stick.
+    pub starting_signature: String,
+    /// Starting coins (cp) last applied, so a re-sync adjusts by the difference.
+    pub starting_coins_cp: u32,
     pub created: String,
     pub updated: String,
 }
@@ -45,6 +50,8 @@ impl Default for Character {
             inventory: Vec::new(),
             coins: Coins::default(),
             starting_equipment_applied: false,
+            starting_signature: String::new(),
+            starting_coins_cp: 0,
             created: String::new(),
             updated: String::new(),
         }
@@ -167,6 +174,16 @@ impl Coins {
     }
     pub fn total_cp(&self) -> u32 {
         self.cp + self.sp * 10 + self.ep * 50 + self.gp * 100 + self.pp * 1000
+    }
+
+    /// Adds (or removes) `delta_cp`, keeping existing denominations where possible.
+    pub fn adjusted(&self, delta_cp: i64) -> Coins {
+        if delta_cp >= 0 {
+            let add = Coins::from_cp(delta_cp as u32);
+            return Coins { cp: self.cp + add.cp, sp: self.sp + add.sp, gp: self.gp + add.gp, ..self.clone() };
+        }
+        let total = self.total_cp() as i64 + delta_cp;
+        Coins::from_cp(total.max(0) as u32)
     }
 }
 

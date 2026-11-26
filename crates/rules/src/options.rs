@@ -79,7 +79,11 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
     let mut out: Vec<OptionItem> = match &choice.options {
         Options::Skills(list) => list.iter().map(|s| prof_item(Prof::Skill(*s), s.name().into()).detail(s.ability().abbr())).collect(),
         Options::AnySkill => Skill::ALL.iter().map(|s| prof_item(Prof::Skill(*s), s.name().into()).detail(s.ability().abbr())).collect(),
-        Options::SkillExpertise => {
+        Options::SkillExpertise | Options::ExpertiseFrom(_) => {
+            let allowed: Vec<Skill> = match &choice.options {
+                Options::ExpertiseFrom(list) if !list.is_empty() => list.clone(),
+                _ => Skill::ALL.to_vec(),
+            };
             let expert: BTreeSet<Skill> = build
                 .grants
                 .iter()
@@ -88,7 +92,7 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                     _ => None,
                 })
                 .collect();
-            Skill::ALL
+            allowed
                 .iter()
                 .map(|s| {
                     let mut o = OptionItem::new(encode_prof(&Prof::Skill(*s)), s.name()).detail(s.ability().abbr());
@@ -102,6 +106,7 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                 })
                 .collect()
         }
+        Options::Saves(list) => list.iter().map(|a| prof_item(Prof::Save(*a), format!("{} saving throws", a.name()))).collect(),
         Options::Tools(list) => list.iter().map(|t| prof_item(Prof::Tool(t.clone()), title_case(t))).collect(),
         Options::AnyTool => tool_names(comp, &enabled, &[]).into_iter().map(|t| prof_item(Prof::Tool(t.clone()), title_case(&t))).collect(),
         Options::AnyArtisanTool => tool_names(comp, &enabled, &["toolArtisan"]).into_iter().map(|t| prof_item(Prof::Tool(t.clone()), title_case(&t))).collect(),
@@ -152,7 +157,7 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                     if taken.contains(&o.key) && !own.contains(o.key.0.as_str()) {
                         it.disabled = Some("Already chosen".into());
                     } else if let Some(p) = &o.prereq {
-                        it.disabled = prereq_problem(p, build, ch);
+                        it.disabled = prereq_problem_in(p, build, ch, Some(comp));
                     }
                     it
                 })
@@ -260,9 +265,64 @@ fn tool_names(comp: &Compendium, enabled: &dyn Fn(&str) -> bool, tags: &[&str]) 
 }
 
 pub fn prereq_problem(p: &Prereq, build: &Build, ch: &Character) -> Option<String> {
+    prereq_problem_in(p, build, ch, None)
+}
+
+/// Checks a prerequisite; `comp` enables name-based checks (species, spells, classes).
+pub fn prereq_problem_in(p: &Prereq, build: &Build, ch: &Character, comp: Option<&Compendium>) -> Option<String> {
     if let Some(l) = p.level {
-        if ch.total_level() < l {
-            return Some(format!("Requires level {l}"));
+        match (&p.level_class, comp) {
+            (Some(class), Some(comp)) => {
+                let have = build
+                    .classes
+                    .iter()
+                    .filter(|c| comp.classes.get(&c.key).is_some_and(|x| x.name.to_lowercase() == *class))
+                    .map(|c| c.level)
+                    .max()
+                    .unwrap_or(0);
+                if have < l {
+                    return Some(format!("Requires {} level {l}", title_case(class)));
+                }
+            }
+            _ => {
+                if ch.total_level() < l {
+                    return Some(format!("Requires level {l}"));
+                }
+            }
+        }
+    }
+    if !p.feats.is_empty() && !p.feats.iter().any(|f| build.has_feat_named(f)) {
+        return Some(format!("Requires {}", p.text));
+    }
+    if !p.features.is_empty() {
+        let have = |n: &str| {
+            build.features.iter().any(|f| f.feature.name.to_lowercase() == n || f.feature.name.to_lowercase().ends_with(&format!(": {n}")))
+        };
+        if !p.features.iter().any(|f| have(f)) {
+            return Some(format!("Requires {}", p.text));
+        }
+    }
+    if let Some(comp) = comp {
+        if !p.species.is_empty() {
+            let sp = ch.species.as_ref().and_then(|k| comp.species.get(k)).map(|s| s.name.to_lowercase()).unwrap_or_default();
+            if !p.species.iter().any(|x| sp == *x || sp.starts_with(&format!("{x} ")) || x.starts_with(&sp)) {
+                return Some(format!("Requires {}", p.text));
+            }
+        }
+        if !p.spells.is_empty() {
+            let known: Vec<String> = build.spells.iter().filter_map(|s| comp.spells.get(&s.key)).map(|s| s.name.to_lowercase()).collect();
+            if !p.spells.iter().any(|x| known.contains(x)) {
+                return Some(format!("Requires {}", p.text));
+            }
+        }
+    }
+    for need in &p.proficiencies {
+        let ok = build.profs().any(|x| match x {
+            Prof::Armor(a) | Prof::Weapon(a) => a.to_lowercase() == *need,
+            _ => false,
+        });
+        if !ok {
+            return Some(format!("Requires {need} proficiency"));
         }
     }
     if !p.abilities.is_empty() && !p.abilities.iter().any(|(a, min)| build.score(*a) >= *min as i32) {
@@ -299,7 +359,7 @@ fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Com
             if taken.contains(&f.key) && !f.repeatable {
                 o.disabled = Some("Already taken".into());
             } else if let Some(p) = &f.prereq {
-                o.disabled = prereq_problem(p, build, ch);
+                o.disabled = prereq_problem_in(p, build, ch, Some(comp));
             }
             o
         })
@@ -322,13 +382,32 @@ fn spell_options(filter: &SpellFilter, choice: &ChoiceState, build: &Build, ch: 
         .filter(|s| !choice.selected.contains(&s.key.0))
         .filter(|s| filter.within_choice.is_none() || !matches!(s.mode, crate::build::SpellMode::Spellbook))
         .collect();
+    // Spells added to this class's list by subclasses or features.
+    let expansions: Vec<&crate::build::Expansion> = build
+        .expanded
+        .iter()
+        .filter(|(class, _)| choice.class.is_some() && (class.is_none() || class == &choice.class))
+        .map(|(_, e)| e)
+        .collect();
+    let class_list_choice = !filter.classes.is_empty() && choice.class.is_some();
+    let expanded = |s: &Spell| {
+        class_list_choice
+            && expansions.iter().any(|e| match e {
+                crate::build::Expansion::Spell(k) => k == &s.key || k.name_part() == s.name.to_lowercase(),
+                crate::build::Expansion::Filter(f) => {
+                    (f.levels.is_empty() || f.levels.contains(&s.level))
+                        && (f.classes.is_empty() || f.classes.iter().any(|c| s.classes.contains(c)))
+                        && (f.schools.is_empty() || f.schools.contains(&s.school))
+                }
+            })
+    };
     let spells: Vec<&Spell> = comp
         .spells
         .iter()
         .filter(|s| ch.settings.source_enabled(&s.source))
         .filter(|s| filter.levels.is_empty() || filter.levels.contains(&s.level))
         .filter(|s| filter.max_level.is_none_or(|m| s.level <= m))
-        .filter(|s| filter.classes.is_empty() || filter.classes.iter().any(|c| s.classes.contains(c)))
+        .filter(|s| filter.classes.is_empty() || filter.classes.iter().any(|c| s.classes.contains(c)) || expanded(s))
         .filter(|s| filter.schools.is_empty() || filter.schools.contains(&s.school))
         .filter(|s| !filter.ritual || s.ritual)
         .filter(|s| within.as_ref().is_none_or(|w| w.contains(s.key.0.as_str())))

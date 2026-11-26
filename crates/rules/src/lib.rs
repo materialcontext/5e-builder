@@ -4,6 +4,7 @@
 //! Everything here is a pure function of `(Character, Compendium)`; the UI
 //! keeps only the `Character` and recomputes the rest on every change.
 
+pub mod audit;
 pub mod build;
 pub mod character;
 pub mod options;
@@ -49,6 +50,17 @@ pub fn issues(ch: &Character, b: &Build, comp: &Compendium) -> Vec<Issue> {
             push(c.step, format!("{} — {}: {n} chosen, only {} allowed", c.origin, c.label, c.count));
         }
     }
+    if b.classes.len() > 1 {
+        for cs in &b.classes {
+            let Some(class) = comp.classes.get(&cs.key) else { continue };
+            for group in &class.multiclass_abilities {
+                if !group.iter().any(|(a, min)| b.score(*a) >= *min as i32) {
+                    let need: Vec<String> = group.iter().map(|(a, n)| format!("{} {n}", a.abbr())).collect();
+                    push(Step::Class, format!("Multiclassing into or out of {} requires {}.", class.name, need.join(" or ")));
+                }
+            }
+        }
+    }
     for (i, l) in ch.levels.iter().enumerate().skip(1) {
         if !ch.settings.average_hp && l.hp_roll.is_none() {
             push(Step::Class, format!("Roll hit points for level {}.", i + 1));
@@ -60,7 +72,6 @@ pub fn issues(ch: &Character, b: &Build, comp: &Compendium) -> Vec<Issue> {
     for w in &b.warnings {
         push(Step::Class, w.clone());
     }
-    let _ = comp;
     out
 }
 
@@ -90,7 +101,22 @@ pub fn starting_equipment(b: &Build, comp: &Compendium) -> (Vec<InventoryItem>, 
     (items, coins)
 }
 
-/// Replaces starting-equipment items (and starting coins) in the inventory.
+/// Identifies the current starting-equipment selections (class, background
+/// and every equipment choice). Changes when the player picks differently.
+pub fn starting_signature(ch: &Character, b: &Build) -> String {
+    let mut sig = format!(
+        "{}|{}",
+        ch.levels.first().map(|l| l.class.0.as_str()).unwrap_or(""),
+        ch.background.as_ref().map(|k| k.0.as_str()).unwrap_or("")
+    );
+    for c in b.choices.iter().filter(|c| c.step == Step::Equipment) {
+        sig.push_str(&format!(";{}={}", c.path, c.selected.join(",")));
+    }
+    sig
+}
+
+/// Replaces starting-equipment items in the inventory and adjusts coins by
+/// the change in starting coins (keeping coins the player added or spent).
 pub fn apply_starting_equipment(ch: &mut Character, comp: &Compendium) {
     let b = build(ch, comp);
     let (items, coins) = starting_equipment(&b, comp);
@@ -98,7 +124,9 @@ pub fn apply_starting_equipment(ch: &mut Character, comp: &Compendium) {
     let mut all = items;
     all.append(&mut ch.inventory);
     ch.inventory = all;
-    ch.coins = Coins::from_cp(coins);
+    ch.coins = ch.coins.adjusted(coins as i64 - ch.starting_coins_cp as i64);
+    ch.starting_coins_cp = coins;
+    ch.starting_signature = starting_signature(ch, &b);
     ch.starting_equipment_applied = true;
 }
 

@@ -166,6 +166,10 @@ pub fn expertise(o: &Obj, id: &str) -> Vec<Grant> {
     o.iter()
         .filter_map(|(k, v)| match k.as_str() {
             "anyProficientSkill" => Some(choose(&format!("{id}.any"), "Expertise", count_of(v), Options::SkillExpertise)),
+            "choose" => {
+                let from = str_list(v.get("from")).iter().filter_map(|s| Skill::parse(s)).collect();
+                Some(choose(&format!("{id}.choose"), "Expertise", count_of(v), Options::ExpertiseFrom(from)))
+            }
             other => Skill::parse(other).map(Grant::Expertise),
         })
         .collect()
@@ -173,6 +177,7 @@ pub fn expertise(o: &Obj, id: &str) -> Vec<Grant> {
 
 pub fn ability(o: &Obj, id: &str) -> Vec<Grant> {
     let mut out = Vec::new();
+    let max = o.get("max").and_then(Value::as_u64).map(|m| m as u8);
     for (k, v) in o {
         if k == "choose" {
             let (from, amounts) = if let Some(w) = v.get("weighted") {
@@ -186,9 +191,60 @@ pub fn ability(o: &Obj, id: &str) -> Vec<Grant> {
                 (str_list(v.get("from")), vec![amount; count])
             };
             let from = from.iter().filter_map(|s| Ability::parse(s)).collect();
-            out.push(choose(&format!("{id}.choose"), "Ability score increase", 1, Options::Abilities { from, amounts }));
+            out.push(choose(&format!("{id}.choose"), "Ability score increase", 1, Options::Abilities { from, amounts, max }));
         } else if let (Some(a), Some(n)) = (Ability::parse(k), v.as_i64()) {
             out.push(Grant::Ability { ability: a, amount: n as i8 });
+            if let Some(m) = max {
+                out.push(Grant::AbilityMax { ability: a, max: m });
+            }
+        }
+    }
+    out
+}
+
+/// `savingThrowProficiencies`.
+pub fn saves(o: &Obj, id: &str) -> Vec<Grant> {
+    let mut out = Vec::new();
+    for (k, v) in o {
+        if k == "choose" {
+            let from = str_list(v.get("from")).iter().filter_map(|s| Ability::parse(s)).collect();
+            out.push(choose(&format!("{id}.choose"), "Saving throw proficiency", count_of(v), Options::Saves(from)));
+        } else if let Some(a) = Ability::parse(k) {
+            out.push(Grant::Prof(Prof::Save(a)));
+        }
+    }
+    out
+}
+
+/// `senses` / `bonusSenses`: `[{ "blindsight": 10 }]`.
+pub fn senses(v: Option<&Value>) -> Vec<Grant> {
+    let mut out = Vec::new();
+    for o in v.and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_object) {
+        for (k, r) in o {
+            let Some(r) = r.as_u64() else { continue };
+            out.push(match k.as_str() {
+                "darkvision" => Grant::Darkvision(r as u16),
+                other => Grant::Sense { sense: other.to_string(), range: r as u16 },
+            });
+        }
+    }
+    out
+}
+
+/// `optionalfeatureProgression` / `featProgression` on feats and options
+/// (`{ "*": n }`: n picks, whatever the level).
+pub fn flat_progressions(o: &Obj, id: &str) -> Vec<Grant> {
+    let mut out = Vec::new();
+    for (field, is_feat) in [("optionalfeatureProgression", false), ("featProgression", true)] {
+        for (i, p) in o.get(field).and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_object).enumerate() {
+            let n = p.get("progression").and_then(|x| x.get("*")).and_then(Value::as_u64).unwrap_or(1) as u8;
+            let name = p.get("name").and_then(Value::as_str).unwrap_or("Option");
+            let options = if is_feat {
+                Options::Feats { categories: str_list(p.get("category")) }
+            } else {
+                Options::OptionalFeatures { types: str_list(p.get("featureType")) }
+            };
+            out.push(choose(&format!("{id}.{field}{i}"), name, n, options));
         }
     }
     out
@@ -238,8 +294,13 @@ pub fn spell_filter(s: &str) -> SpellFilter {
     f
 }
 
+/// `"3"` is a class/character level; `"s3"` is a *spell* level (no level gate); `"_"` is immediate.
 fn level_key(k: &str) -> u8 {
-    k.trim_start_matches('s').parse().unwrap_or(0)
+    if k.starts_with('s') {
+        0
+    } else {
+        k.parse().unwrap_or(0)
+    }
 }
 
 fn spell_list(v: &Value, level: u8, kind: &SpellKind, out: &mut Vec<SpellGrant>) {
@@ -249,6 +310,8 @@ fn spell_list(v: &Value, level: u8, kind: &SpellKind, out: &mut Vec<SpellGrant>)
             if let Some(c) = o.get("choose").and_then(Value::as_str) {
                 let count = o.get("count").and_then(Value::as_u64).unwrap_or(1) as u8;
                 out.push(SpellGrant { level, kind: kind.clone(), pick: SpellPick::Choose { filter: spell_filter(c), count } });
+            } else if let Some(a) = o.get("all").and_then(Value::as_str) {
+                out.push(SpellGrant { level, kind: kind.clone(), pick: SpellPick::All(spell_filter(a)) });
             }
         }
         _ => {}
@@ -422,6 +485,31 @@ pub fn prereq(v: Option<&Value>) -> Option<Prereq> {
             }
         }
     }
+    if let Some(Value::Object(l)) = first.get("level") {
+        p.level_class = l.get("class").and_then(|c| c.get("name")).and_then(Value::as_str).map(|s| s.to_lowercase());
+    }
+    let names = |k: &str| -> Vec<String> {
+        first
+            .get(k)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|x| x.as_str().map(String::from).or_else(|| x.get("name").and_then(Value::as_str).map(String::from)))
+            .map(|x| name_part(&x).split('#').next().unwrap_or("").to_lowercase())
+            .collect()
+    };
+    p.species = names("race");
+    p.feats = names("feat");
+    p.spells = names("spell").into_iter().filter(|s| !s.is_empty()).collect();
+    p.features = names("feature").into_iter().chain(names("optionalfeature")).collect();
+    if let Some(pact) = first.get("pact").and_then(Value::as_str) {
+        p.features.push(format!("pact of the {}", pact.to_lowercase()));
+    }
+    for prof in first.get("proficiency").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_object) {
+        for v in prof.values().filter_map(Value::as_str) {
+            p.proficiencies.push(v.to_lowercase());
+        }
+    }
     p.spellcasting = first.contains_key("spellcasting") || first.contains_key("spellcasting2020") || first.contains_key("spellcastingFeature");
     let texts: Vec<String> = alts.iter().filter_map(Value::as_object).map(prereq_text).filter(|s| !s.is_empty()).collect();
     p.text = texts.join("; or ");
@@ -488,6 +576,18 @@ fn prereq_text(o: &Obj) -> String {
                 }
             }
             "pact" => parts.push(format!("Pact of the {}", v.as_str().unwrap_or(""))),
+            "campaign" => {
+                let names: Vec<&str> = v.as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+                parts.push(format!("{} campaign", names.join(" or ")));
+            }
+            "feature" | "optionalfeature" => {
+                let names: Vec<String> = v.as_array().into_iter().flatten().filter_map(Value::as_str).map(|s| title_case(&name_part(s))).collect();
+                parts.push(names.join(" or "));
+            }
+            "item" => {
+                let names: Vec<String> = v.as_array().into_iter().flatten().filter_map(Value::as_str).map(|s| title_case(&name_part(s))).collect();
+                parts.push(names.join(" or "));
+            }
             "patron" => parts.push(format!("{} patron", v.as_str().unwrap_or(""))),
             "spell" => {
                 let names: Vec<String> = v.as_array().into_iter().flatten().filter_map(Value::as_str).map(|s| title_case(&name_part(s))).collect();

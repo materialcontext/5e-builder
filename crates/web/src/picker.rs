@@ -116,7 +116,7 @@ fn option_row(o: OptionItem, selected: &[String], count: usize, path: String, in
 
 /// Positional picks for unequal ability bonuses (+2 to one, +1 to another).
 fn ability_slots(options: &Options, selected: Vec<String>, path: String, ctx: EditorCtx) -> impl IntoView {
-    let Options::Abilities { from, amounts } = options.clone() else { return ().into_any() };
+    let Options::Abilities { from, amounts, .. } = options.clone() else { return ().into_any() };
     amounts
         .iter()
         .enumerate()

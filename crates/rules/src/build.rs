@@ -101,6 +101,12 @@ pub struct KnownSpell {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum Expansion {
+    Spell(Key),
+    Filter(SpellFilter),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClassState {
     pub key: Key,
     pub level: u8,
@@ -117,6 +123,8 @@ pub struct Build {
     pub optional_features: Vec<(Key, String)>,
     pub classes: Vec<ClassState>,
     pub warnings: Vec<String>,
+    /// Spells added to a class's spell list (class `None`: every list).
+    pub expanded: Vec<(Option<Key>, Expansion)>,
     /// Final ability scores (base + bonuses), indexed by [`Ability::index`].
     pub scores: [i32; 6],
 }
@@ -235,9 +243,9 @@ impl<'a> Walker<'a> {
         if !replaces {
             let overridden: Vec<&str> = lineage.map(|l| l.features.iter().map(|f| f.name.as_str()).collect()).unwrap_or_default();
             features.extend(sp.features.iter().filter(|f| !overridden.contains(&f.name.as_str())));
-            let grants = sp.grants.clone();
+            let grants = lineage.and_then(|l| l.base_override.clone()).unwrap_or_else(|| sp.grants.clone());
             self.walk(&grants, &ctx);
-            if legacy_asi {
+            if legacy_asi && !lineage.is_some_and(|l| l.overrides_asi) {
                 let g = sp.legacy_asi.clone();
                 self.walk(&g, &ctx.child("asi"));
             }
@@ -353,6 +361,22 @@ impl<'a> Walker<'a> {
 
             for (fi, f) in class.features.iter().enumerate().filter(|(_, f)| f.level <= level) {
                 let fctx = Ctx { gained_at: at(f.level), ..base.child(&format!("f{fi}")) };
+                if f.optional {
+                    // Optional class features (Tasha's) are opt-in.
+                    let mut use_it = vec![Grant::Feature(Feature { name: f.name.clone(), body: f.body.clone() })];
+                    use_it.extend(f.grants.iter().cloned());
+                    let c = Choice {
+                        id: "optional".into(),
+                        label: format!("Optional feature: {}", f.name),
+                        count: Count::Fixed(1),
+                        options: Options::Bundles(vec![
+                            Bundle { name: "Use it".into(), grants: use_it },
+                            Bundle { name: "Don't use it".into(), grants: vec![] },
+                        ]),
+                    };
+                    self.choose(&c, &fctx);
+                    continue;
+                }
                 if !f.subclass_slot {
                     self.feature(Feature { name: f.name.clone(), body: f.body.clone() }, &fctx);
                 }
@@ -585,11 +609,14 @@ impl<'a> Walker<'a> {
                     self.walk(&g, &child);
                 }
             }
-            Options::Abilities { amounts, .. } => {
+            Options::Abilities { amounts, max, .. } => {
                 for (v, amount) in picked.iter().zip(amounts) {
                     if let Some(a) = Ability::parse(v) {
                         if *amount != 0 {
                             self.push(Grant::Ability { ability: a, amount: *amount }, ctx);
+                        }
+                        if let Some(m) = max {
+                            self.push(Grant::AbilityMax { ability: a, max: *m }, ctx);
                         }
                     }
                 }
@@ -622,7 +649,7 @@ impl<'a> Walker<'a> {
                 picked.iter().for_each(|v| self.push(Grant::Item { item: ItemRef::Key(Key(v.clone())), qty: 1 }, ctx))
             }
             Options::WeaponMastery => picked.iter().for_each(|v| self.push(Grant::Feature(mastery_feature(self.comp, v)), ctx)),
-            Options::SkillExpertise => {
+            Options::SkillExpertise | Options::ExpertiseFrom(_) => {
                 for v in picked {
                     if let Some(s) = decode_prof(v).and_then(|p| match p {
                         Prof::Skill(s) => Some(s),
@@ -676,7 +703,7 @@ impl<'a> Walker<'a> {
                     id: "ability".into(),
                     label: "Spellcasting ability".into(),
                     count: Count::Fixed(1),
-                    options: Options::Abilities { from: from.clone(), amounts: vec![0] },
+                    options: Options::Abilities { from: from.clone(), amounts: vec![0], max: None },
                 };
                 let path = self.choose(&c, ctx);
                 self.ch.selected(&path).first().and_then(|s| Ability::parse(s))
@@ -691,10 +718,20 @@ impl<'a> Walker<'a> {
                 SpellKind::Known => SpellMode::Known,
                 SpellKind::Prepared => SpellMode::AlwaysPrepared,
                 SpellKind::Innate(u) => SpellMode::Innate(u.clone()),
-                SpellKind::Expanded => continue,
+                SpellKind::Expanded => {
+                    // Added to the owning class's spell list; level limits come from the class.
+                    let filter = match &sg.pick {
+                        SpellPick::Fixed(k) => Expansion::Spell(k.clone()),
+                        SpellPick::All(f) => Expansion::Filter(f.clone()),
+                        SpellPick::Choose { .. } => continue,
+                    };
+                    self.out.expanded.push((class.clone(), filter));
+                    continue;
+                }
             };
             let keys: Vec<Key> = match &sg.pick {
                 SpellPick::Fixed(k) => vec![k.clone()],
+                SpellPick::All(_) => continue,
                 SpellPick::Choose { filter, count } => {
                     let c = Choice {
                         id: format!("spell{i}"),
@@ -797,7 +834,7 @@ pub fn standard_background_asi() -> Choice {
             id: id.into(),
             label: "Ability score increase".into(),
             count: Count::Fixed(1),
-            options: Options::Abilities { from: all.clone(), amounts },
+            options: Options::Abilities { from: all.clone(), amounts, max: None },
         })],
     };
     Choice {

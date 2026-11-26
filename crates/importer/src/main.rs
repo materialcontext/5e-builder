@@ -5,6 +5,7 @@
 
 mod grants;
 mod inherit;
+mod patches;
 mod records;
 mod text;
 
@@ -47,7 +48,19 @@ fn data_version(dir: &Path) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
+/// Loads `rel` and patches the arrays named `kinds` inside it.
+fn load_patched(dir: &Path, rel: &str, kinds: &[&str], p: &mut patches::Patches) -> Value {
+    let mut v = load(dir, rel);
+    for k in kinds {
+        if let Some(Value::Array(a)) = v.get_mut(*k) {
+            p.apply(k, a);
+        }
+    }
+    v
+}
+
 fn build(dir: &Path) -> Compendium {
+    let mut patches = patches::Patches::load();
     let mut class_data = records::ClassData::default();
     for f in indexed(dir, "class") {
         for (k, target) in [
@@ -61,21 +74,36 @@ fn build(dir: &Path) -> Compendium {
             }
         }
     }
+    patches.apply("class", &mut class_data.class);
+    patches.apply("subclass", &mut class_data.subclass);
+    patches.apply("classFeature", &mut class_data.class_feature);
+    patches.apply("subclassFeature", &mut class_data.subclass_feature);
     let (classes, subclasses) = records::classes(&class_data);
     let spell_files = indexed(dir, "spells");
     let lookup = load(dir, "generated/gendata-spell-source-lookup.json");
 
+    let mut species = records::species(&load_patched(dir, "races.json", &["race", "subrace"], &mut patches));
+    let mut backgrounds = records::backgrounds(&load_patched(dir, "backgrounds.json", &["background"], &mut patches));
+    let feats = records::feats(&load_patched(dir, "feats.json", &["feat"], &mut patches));
+    let optional_features = records::optional_features(&load_patched(dir, "optionalfeatures.json", &["optionalfeature"], &mut patches));
+    for u in patches.unmatched() {
+        eprintln!("warn: patch matched nothing: {u}");
+    }
+    let mut classes = classes;
+    let mut items = records::items(&load(dir, "items-base.json"), &load(dir, "items.json"));
+    fix_item_refs(&mut species, &mut backgrounds, &mut classes, &mut items);
+
     let mut c = Compendium {
         data_version: data_version(dir),
         sources: records::sources(&load(dir, "books.json"), &load(dir, "adventures.json")),
-        species: Table::new(records::species(&load(dir, "races.json"))),
-        backgrounds: Table::new(records::backgrounds(&load(dir, "backgrounds.json"))),
-        feats: Table::new(records::feats(&load(dir, "feats.json"))),
+        species: Table::new(species),
+        backgrounds: Table::new(backgrounds),
+        feats: Table::new(feats),
         classes: Table::new(classes),
         subclasses: Table::new(subclasses),
-        optional_features: Table::new(records::optional_features(&load(dir, "optionalfeatures.json"))),
+        optional_features: Table::new(optional_features),
         spells: Table::new(records::spells(&spell_files, &lookup)),
-        items: Table::new(records::items(&load(dir, "items-base.json"), &load(dir, "items.json"))),
+        items: Table::new(items),
         languages: Table::new(records::languages(&load(dir, "languages.json"))),
     };
 
@@ -100,6 +128,65 @@ fn build(dir: &Path) -> Compendium {
     }
     c.sources.sort_by(|a, b| (a.group, &a.published, &a.name).cmp(&(b.group, &b.published, &b.name)));
     c
+}
+
+/// Repoints item references whose source doesn't exist (e.g. `holy symbol|phb`
+/// when only the 2024 group exists) to an item of the same name.
+fn fix_item_refs(species: &mut [compendium::Species], backgrounds: &mut [compendium::Background], classes: &mut [compendium::Class], items: &mut [compendium::Item]) {
+    use compendium::{Grant, ItemRef, Key, Options};
+    use std::collections::HashMap;
+    let keys: BTreeSet<Key> = items.iter().map(|i| i.key.clone()).collect();
+    let mut by_name: HashMap<String, Key> = HashMap::new();
+    for i in items.iter().filter(|i| i.rarity.is_none()) {
+        let rank = |k: &Key| match k.source_part() {
+            "xphb" => 0,
+            "phb" => 1,
+            _ => 2,
+        };
+        let e = by_name.entry(i.name.to_lowercase()).or_insert_with(|| i.key.clone());
+        if rank(&i.key) < rank(e) {
+            *e = i.key.clone();
+        }
+    }
+    let resolve = |k: &mut Key| {
+        if !keys.contains(k) {
+            let name = k.name_part().to_string();
+            let singular = name.trim_end_matches('s').to_string();
+            if let Some(found) = by_name.get(&name).or_else(|| by_name.get(&singular)) {
+                *k = found.clone();
+            }
+        }
+    };
+    fn walk(gs: &mut [Grant], f: &dyn Fn(&mut Key)) {
+        for g in gs {
+            match g {
+                Grant::Item { item: ItemRef::Key(k), .. } => f(k),
+                Grant::Choose(c) => {
+                    if let Options::Bundles(b) = &mut c.options {
+                        for x in b {
+                            walk(&mut x.grants, f);
+                        }
+                    }
+                }
+                Grant::AtLevel { grants, .. } => walk(grants, f),
+                _ => {}
+            }
+        }
+    }
+    for s in species.iter_mut() {
+        walk(&mut s.grants, &resolve);
+    }
+    for b in backgrounds.iter_mut() {
+        walk(&mut b.grants, &resolve);
+    }
+    for c in classes.iter_mut() {
+        walk(&mut c.equipment, &resolve);
+    }
+    for i in items.iter_mut() {
+        for (k, _) in i.contents.iter_mut() {
+            resolve(k);
+        }
+    }
 }
 
 fn main() {

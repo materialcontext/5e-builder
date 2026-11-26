@@ -44,6 +44,20 @@ pub fn common_grants(o: &Obj, id: &str) -> Vec<Grant> {
     out.extend(g::damage_list(o.get("immune"), &format!("{id}.immune"), Grant::Immune));
     out.extend(g::damage_list(o.get("conditionImmune"), &format!("{id}.cimmune"), Grant::CondImmune));
     out.extend(g::additional_spells(o.get("additionalSpells"), &format!("{id}.spells")));
+    out.extend(alternatives(o.get("savingThrowProficiencies"), &format!("{id}.saves"), "Saving throw", g::saves));
+    out.extend(g::damage_list(o.get("vulnerable"), &format!("{id}.vuln"), Grant::Vulnerable));
+    out.extend(g::senses(o.get("senses")));
+    out.extend(g::senses(o.get("bonusSenses")));
+    if let Some(r) = o.get("blindsight").and_then(Value::as_u64) {
+        out.push(Grant::Sense { sense: "blindsight".into(), range: r as u16 });
+    }
+    // Escape hatch for patches: compendium grants written directly.
+    if let Some(raw) = o.get("_grants") {
+        match serde_json::from_value::<Vec<Grant>>(raw.clone()) {
+            Ok(gs) => out.extend(gs),
+            Err(e) => eprintln!("warn: bad _grants on {}: {e}", s(o, "name")),
+        }
+    }
     out
 }
 
@@ -120,11 +134,24 @@ pub fn species(data: &Value) -> Vec<Species> {
             let feats = trait_features(sub.get("entries"), &refs, &sub_name);
             let mut lg = common_grants(sub, "lineage");
             lg.extend(toughness(&feats));
+            // `overwrite: { languageProficiencies: true }`: the subrace's field replaces the race's.
+            let overwrite: Vec<String> = sub.get("overwrite").and_then(Value::as_object).map(|o| o.keys().cloned().collect()).unwrap_or_default();
+            let base_override = overwrite.iter().any(|k| k != "ability" && k != "traitTags").then(|| {
+                let mut trimmed = race.clone();
+                for k in &overwrite {
+                    trimmed.remove(k);
+                }
+                let mut g = common_grants(&trimmed, "species");
+                g.extend(toughness(&features));
+                g
+            });
             lineages.push(Lineage {
                 key: Key::new(&format!("{sub_name} ({name})"), &sub_source),
                 name: sub_name,
                 source: sub_source,
                 replaces_base: false,
+                base_override,
+                overrides_asi: overwrite.iter().any(|k| k == "ability"),
                 speed: speed(sub.get("speed")),
                 darkvision: u16_of(sub.get("darkvision")),
                 grants: lg,
@@ -148,6 +175,8 @@ pub fn species(data: &Value) -> Vec<Species> {
                 name: short,
                 source: s(vo, "source").to_string(),
                 replaces_base: true,
+                base_override: None,
+                overrides_asi: false,
                 speed: speed(vo.get("speed")),
                 darkvision: u16_of(vo.get("darkvision")),
                 grants: lg,
@@ -208,6 +237,7 @@ pub fn backgrounds(data: &Value) -> Vec<Background> {
                 legacy: legacy(o),
                 has_asi: o.contains_key("ability"),
                 has_feat: o.contains_key("feats"),
+                prereq: g::prereq(o.get("prerequisite")).map(|p| p.text).filter(|t| !t.is_empty()),
                 grants,
                 features,
             }
@@ -221,6 +251,7 @@ fn feat_record(o: &Obj, version_of: Option<Key>) -> Feat {
     let name = s(o, "name").to_string();
     let mut grants = common_grants(o, "feat");
     grants.extend(ability_grants(o, "feat.asi"));
+    grants.extend(g::flat_progressions(o, "feat"));
     if name == "Tough" {
         grants.push(Grant::HpPerLevel(2));
     }
@@ -263,6 +294,7 @@ pub fn optional_features(data: &Value) -> Vec<OptionalFeature> {
         .map(|o| {
             let mut grants = common_grants(o, "opt");
             grants.extend(ability_grants(o, "opt.asi"));
+            grants.extend(g::flat_progressions(o, "opt"));
             OptionalFeature {
                 key: Key::new(s(o, "name"), s(o, "source")),
                 name: s(o, "name").to_string(),
@@ -493,7 +525,8 @@ fn feature_record(f: &Obj, level: u8, subclass_slot: bool, ctx: &FeatureCtx, pat
             }));
         }
     }
-    ClassFeature { body: text::entries(&entries, ctx.refs), name, level, grants, subclass_slot }
+    let optional = f.get("isClassFeatureVariant").and_then(Value::as_bool).unwrap_or(false);
+    ClassFeature { body: text::entries(&entries, ctx.refs), name, level, grants, subclass_slot, optional }
 }
 
 fn feature_uid_level(uid: &str, subclass: bool) -> u8 {
@@ -525,6 +558,32 @@ fn starting_grants(sp: &Obj, prefix: &str) -> Vec<Grant> {
         out.extend(strings("tools").into_iter().map(|a| Grant::Prof(Prof::Tool(a))));
     }
     out.extend(alternatives(sp.get("skills"), &format!("{prefix}.skills"), "Skills", g::skills));
+    out
+}
+
+fn multiclass_abilities(o: &Obj) -> Vec<Vec<(Ability, u8)>> {
+    let Some(req) = o.get("multiclassing").and_then(|m| m.get("requirements")).and_then(Value::as_object) else {
+        // 2024 rule: 13 in the class's primary ability. `primaryAbility` lists
+        // alternatives; each alternative's keys are all required.
+        let alts: Vec<Vec<Ability>> = o
+            .get("primaryAbility")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_object)
+            .map(|a| a.keys().filter_map(|k| Ability::parse(k)).collect())
+            .collect();
+        return match alts.as_slice() {
+            [] => vec![],
+            [all] => all.iter().map(|a| vec![(*a, 13)]).collect(),
+            many => vec![many.iter().flatten().map(|a| (*a, 13)).collect()],
+        };
+    };
+    let mut out: Vec<Vec<(Ability, u8)>> =
+        req.iter().filter_map(|(k, v)| Some(vec![(Ability::parse(k)?, v.as_u64()? as u8)])).collect();
+    for alt in req.get("or").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_object) {
+        out.push(alt.iter().filter_map(|(k, v)| Some((Ability::parse(k)?, v.as_u64()? as u8))).collect());
+    }
     out
 }
 
@@ -602,11 +661,45 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             .and_then(Value::as_object)
             .map(|p| starting_grants(p, "multi"))
             .unwrap_or_default();
-        let equipment = c
+        let mut equipment = c
             .get("startingEquipment")
             .and_then(|e| e.get("defaultData"))
             .map(|d| g::equipment(Some(d), "equipment"))
             .unwrap_or_default();
+        // 2014 classes: starting gold instead of the equipment packages.
+        if let Some(gold) = c.get("startingEquipment").and_then(|e| e.get("goldAlternative")).and_then(Value::as_str) {
+            if let Some(avg) = average_gold_cp(gold) {
+                let text = strip(gold);
+                equipment = vec![choose(
+                    "equipment.or-gold",
+                    "Starting equipment or gold",
+                    1,
+                    Options::Bundles(vec![
+                        Bundle { name: "Class starting equipment".into(), grants: equipment },
+                        Bundle { name: format!("Gold instead ({text}, average {})", compendium::format_coins(avg)), grants: vec![Grant::Coins(avg)] },
+                    ]),
+                )];
+            }
+        }
+        let mut class_grants = common_grants(c, "class");
+        // Mystic Arcanum and similar: one spell of a given level gained at a class level.
+        if let Some(by_level) = c.get("spellsKnownProgressionFixedByLevel").and_then(Value::as_object) {
+            for (lvl, per) in by_level {
+                let Ok(lvl) = lvl.parse::<u8>() else { continue };
+                for (spell_level, n) in per.as_object().into_iter().flatten() {
+                    let n = n.as_u64().unwrap_or(1) as u8;
+                    let filter = SpellFilter { levels: vec![spell_level.parse().unwrap_or(1)], classes: vec![name.to_lowercase()], ..Default::default() };
+                    class_grants.push(Grant::AtLevel {
+                        level: lvl,
+                        grants: vec![Grant::Spells(SpellGroup {
+                            name: Some(format!("Level {spell_level} arcanum")),
+                            ability: SpellAbility::Inherit,
+                            spells: vec![SpellGrant { level: lvl, kind: SpellKind::Innate("1/long rest".into()), pick: SpellPick::Choose { filter, count: n } }],
+                        })],
+                    });
+                }
+            }
+        }
         out_classes.push(Class {
             legacy: legacy(c),
             hit_die: c.get("hd").and_then(|h| h.get("faces")).and_then(Value::as_u64).unwrap_or(8) as u8,
@@ -632,12 +725,21 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             starting,
             multiclass,
             multiclass_req: multiclass_req(c),
+            multiclass_abilities: multiclass_abilities(c),
             equipment,
             features,
             subclass_title: c.get("subclassTitle").and_then(Value::as_str).unwrap_or("Subclass").to_string(),
             progressions: progressions(c),
             weapon_mastery: totals(c.get("itemMasteriesProgression")),
-            grants: common_grants(c, "class"),
+            grants: class_grants,
+            subclass_from: c
+                .get("includeSubclassesFrom")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|x| ref_key(x, "phb"))
+                .collect(),
             key,
             name,
             source,
@@ -701,6 +803,16 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
         });
     }
     (out_classes, out_subs)
+}
+
+/// Average of a 5etools gold formula like `{@dice 5d4 × 10|5d4 × 10|Starting Gold}` (in copper).
+fn average_gold_cp(s: &str) -> Option<u32> {
+    let t = strip(s).replace('×', "x").replace(' ', "");
+    let (dice, mult) = t.split_once('x').map(|(d, m)| (d.to_string(), m.parse::<u32>().unwrap_or(1))).unwrap_or((t.clone(), 1));
+    let (n, faces) = dice.split_once('d')?;
+    let n: u32 = n.parse().ok()?;
+    let faces: u32 = faces.trim_end_matches(|c: char| !c.is_ascii_digit()).parse().ok()?;
+    Some(n * (faces + 1) * mult * 100 / 2)
 }
 
 // ---------------------------------------------------------------- spells
@@ -1020,6 +1132,31 @@ pub fn items(base: &Value, items: &Value) -> Vec<Item> {
     let resolved = inherit::resolve_copies(item_list, |o| ident(o, &["name", "source"]));
 
     let mut out: Vec<Item> = base_list.iter().filter_map(Value::as_object).filter_map(item_record).collect();
+    // Item groups ("Holy Symbol": amulet, emblem, reliquary) become generic items
+    // modelled on their first member.
+    let all_by_key: HashMap<String, &Obj> = base_list
+        .iter()
+        .chain(items.get("item").and_then(Value::as_array).into_iter().flatten())
+        .filter_map(Value::as_object)
+        .map(|o| (format!("{}|{}", s(o, "name").to_lowercase(), s(o, "source").to_lowercase()), o))
+        .collect();
+    for grp in arr(items, "itemGroup") {
+        let member = grp
+            .get("items")
+            .and_then(Value::as_array)
+            .and_then(|a| a.first())
+            .and_then(Value::as_str)
+            .and_then(|m| all_by_key.get(&ref_key(m, "phb").0));
+        let mut merged = member.map(|m| (*m).clone()).unwrap_or_default();
+        for (k, v) in grp {
+            if k != "items" && k != "itemsHidden" {
+                merged.insert(k.clone(), v.clone());
+            }
+        }
+        if let Some(it) = item_record(&merged) {
+            out.push(it);
+        }
+    }
     for v in resolved {
         let Some(o) = v.as_object() else { continue };
         // Magic items built on a base item inherit its stats.

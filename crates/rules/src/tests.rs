@@ -1,7 +1,7 @@
 //! Integration tests against the real compendium (skipped when it hasn't been generated).
 
 use crate::*;
-use compendium::{Ability, Compendium, Key, Skill};
+use compendium::{Ability, Compendium, Key, Options, Prof, Skill};
 use std::sync::OnceLock;
 
 fn comp() -> Option<&'static Compendium> {
@@ -15,7 +15,7 @@ fn comp() -> Option<&'static Compendium> {
 
 /// Resolves every pending choice by picking the first allowed options.
 pub fn autofill(ch: &mut Character, comp: &Compendium) {
-    for _ in 0..50 {
+    for _ in 0..200 {
         let b = build(ch, comp);
         let Some(c) = b.pending().next().cloned() else { return };
         let opts = options(&c, &b, ch, comp);
@@ -212,4 +212,207 @@ fn every_class_and_species_resolves() {
         }
     }
     assert!(failures.is_empty(), "{} failures: {failures:?}", failures.len());
+}
+
+#[test]
+fn audit_content() {
+    let Some(comp) = comp() else { return };
+    let r = audit::audit(comp);
+    for p in &r.problems {
+        eprintln!("AUDIT {p}");
+    }
+    assert!(r.problems.is_empty(), "{} audit problems", r.problems.len());
+}
+
+fn choice_with<'a>(b: &'a Build, suffix: &str) -> &'a ChoiceState {
+    b.choices.iter().find(|c| c.path.ends_with(suffix)).unwrap_or_else(|| panic!("no choice ending {suffix}: {:#?}", b.choices.iter().map(|c| &c.path).collect::<Vec<_>>()))
+}
+
+fn option_labels(ch: &Character, b: &Build, c: &ChoiceState, comp: &Compendium) -> Vec<String> {
+    options(c, b, ch, comp).into_iter().filter(|o| o.disabled.is_none()).map(|o| o.label).collect()
+}
+
+#[test]
+fn resilient_grants_a_save() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+    ch.set_starting_level(4);
+    autofill(&mut ch, comp);
+    let asi = build(&ch, comp).choices.iter().find(|c| c.label.starts_with("Ability Score Improvement")).unwrap().path.clone();
+    ch.set_choice(&asi, vec!["resilient|xphb".into()]);
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let saves = b.choices.iter().find(|c| matches!(c.options, Options::Saves(_))).expect("save choice");
+    let pick = saves.selected[0].clone();
+    assert!(b.has_prof(&build::decode_prof(&pick).unwrap()));
+}
+
+#[test]
+fn divine_order_protector_grants_martial_and_heavy() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("cleric|xphb", "acolyte|xphb", "human|xphb");
+    let b = build(&ch, comp);
+    let order = b.choices.iter().find(|c| c.label == "Divine Order").expect("divine order").path.clone();
+    ch.set_choice(&order, vec!["Protector".into()]);
+    let b = build(&ch, comp);
+    assert!(b.has_prof(&Prof::Weapon("martial".into())));
+    assert!(b.has_prof(&Prof::Armor("heavy".into())));
+    ch.set_choice(&order, vec!["Thaumaturge".into()]);
+    let b = build(&ch, comp);
+    assert!(b.choices.iter().any(|c| c.path.starts_with(&format!("{order}/Thaumaturge")) && matches!(c.options, Options::Spells(_))));
+}
+
+#[test]
+fn warlock_mystic_arcanum_and_expanded_list() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("warlock|xphb", "sage|xphb", "human|xphb");
+    ch.set_starting_level(11);
+    let b = build(&ch, comp);
+    let arcanum = b.choices.iter().find(|c| matches!(&c.options, Options::Spells(f) if f.levels == [6])).expect("6th-level arcanum");
+    assert!(option_labels(&ch, &b, arcanum, comp).iter().any(|l| l == "Mass Suggestion"));
+
+    // 2014 Fiend patron adds Burning Hands to the warlock list.
+    let mut ch = hero("warlock|phb", "sage|xphb", "human|xphb");
+    ch.set_starting_level(3);
+    let b = build(&ch, comp);
+    let sub = choice_with(&b, "/subclass").path.clone();
+    let fiend = comp.subclasses_of(&Key("warlock|phb".into())).find(|s| s.short_name == "Fiend" && s.source == "PHB").unwrap().key.0.clone();
+    ch.set_choice(&sub, vec![fiend]);
+    let b = build(&ch, comp);
+    let known = choice_with(&b, "/known");
+    assert!(option_labels(&ch, &b, known, comp).iter().any(|l| l == "Burning Hands"));
+}
+
+#[test]
+fn bard_magical_secrets_2024_expands_list() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("bard|xphb", "sage|xphb", "human|xphb");
+    ch.set_starting_level(9);
+    let b = build(&ch, comp);
+    assert!(!option_labels(&ch, &b, choice_with(&b, "/prepared"), comp).iter().any(|l| l == "Fireball"));
+    ch.set_starting_level(10);
+    let b = build(&ch, comp);
+    assert!(option_labels(&ch, &b, choice_with(&b, "/prepared"), comp).iter().any(|l| l == "Fireball"));
+}
+
+#[test]
+fn tasha_optional_features_are_opt_in() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("rogue|phb", "criminal|phb", "human|phb");
+    ch.set_starting_level(3);
+    let b = build(&ch, comp);
+    let opt = b.choices.iter().find(|c| c.label == "Optional feature: Steady Aim").expect("steady aim choice").path.clone();
+    assert!(!b.has_feature_named("Steady Aim"));
+    ch.set_choice(&opt, vec!["Use it".into()]);
+    assert!(build(&ch, comp).has_feature_named("Steady Aim"));
+}
+
+#[test]
+fn feats_granting_options() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("wizard|xphb", "acolyte|phb", "human|xphb");
+    ch.set_choice("background/origin-feat", vec![]);
+    let b = build(&ch, comp);
+    let origin = choice_with(&b, "background/origin-feat").path.clone();
+    let _ = origin;
+    // Fighting Initiate (TCE, no category) through the 2024 general feat at 4.
+    ch.set_starting_level(4);
+    let b = build(&ch, comp);
+    let asi = b.choices.iter().find(|c| c.label.starts_with("Ability Score Improvement")).unwrap().path.clone();
+    ch.set_choice(&asi, vec!["fighting initiate|tce".into()]);
+    let b = build(&ch, comp);
+    assert!(b.choices.iter().any(|c| c.path.starts_with(&format!("{asi}/fighting initiate|tce")) && matches!(c.options, Options::OptionalFeatures { .. })));
+}
+
+#[test]
+fn wizard_scholar_expertise_list() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("wizard|xphb", "sage|xphb", "human|xphb");
+    ch.set_starting_level(2);
+    let b = build(&ch, comp);
+    let c = b.choices.iter().find(|c| matches!(c.options, Options::ExpertiseFrom(_))).expect("scholar");
+    assert_eq!(c.count, 1);
+}
+
+#[test]
+fn subrace_overwrites_languages() {
+    let Some(comp) = comp() else { return };
+    let sp = comp.species.get(&Key("elf|phb".into())).unwrap();
+    let high = sp.lineages.iter().find(|l| l.name == "High").unwrap();
+    assert!(high.base_override.is_some());
+}
+
+#[test]
+fn starting_gold_alternative_for_2014_classes() {
+    let Some(comp) = comp() else { return };
+    let ch = hero("fighter|phb", "soldier|phb", "human|phb");
+    let b = build(&ch, comp);
+    let eq = b.choices.iter().find(|c| c.path.ends_with("equipment.or-gold")).expect("gold alternative");
+    assert!(matches!(&eq.options, Options::Bundles(b) if b.len() == 2 && b[1].name.contains("Gold")));
+}
+
+#[test]
+fn focus_items_resolve() {
+    let Some(comp) = comp() else { return };
+    for k in ["holy symbol|xphb", "druidic focus|xphb", "arcane focus|xphb"] {
+        assert!(comp.items.get(&Key(k.into())).is_some(), "{k}");
+    }
+}
+
+#[test]
+fn invocation_prerequisites_enforced() {
+    let Some(comp) = comp() else { return };
+    // 2014 Agonizing Blast needs the eldritch blast cantrip.
+    let agonizing = comp.optional_features.get(&Key("agonizing blast|phb".into())).unwrap();
+    let p = agonizing.prereq.clone().unwrap();
+    let mut ch = hero("warlock|phb", "sage|xphb", "human|xphb");
+    ch.set_starting_level(2);
+    let b = build(&ch, comp);
+    assert!(options::prereq_problem_in(&p, &b, &ch, Some(comp)).is_some());
+    let cantrips = choice_with(&b, "/cantrips").path.clone();
+    ch.set_choice(&cantrips, vec!["eldritch blast|phb".into(), "minor illusion|phb".into()]);
+    let b = build(&ch, comp);
+    assert!(options::prereq_problem_in(&p, &b, &ch, Some(comp)).is_none());
+    // 2024 invocations check warlock level, not character level.
+    let lessons = comp.optional_features.get(&Key("lessons of the first ones|xphb".into())).unwrap();
+    let lp = lessons.prereq.clone().unwrap();
+    assert_eq!(lp.level_class.as_deref(), Some("warlock"));
+}
+
+#[test]
+fn manual_inventory_edits_survive() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+    autofill(&mut ch, comp);
+    apply_starting_equipment(&mut ch, comp);
+    let b = build(&ch, comp);
+    assert_eq!(ch.starting_signature, starting_signature(&ch, &b));
+    // Player spends 3 gp and drops an item: nothing re-syncs until choices change.
+    let before = ch.coins.total_cp();
+    ch.coins = Coins::from_cp(before - 300);
+    ch.inventory.remove(0);
+    let n = ch.inventory.len();
+    let b = build(&ch, comp);
+    assert_eq!(ch.starting_signature, starting_signature(&ch, &b));
+    // Changing the equipment choice swaps items and keeps the 3 gp spent.
+    let eq = b.choices.iter().find(|c| c.step == Step::Equipment && c.path.contains("class:")).unwrap().clone();
+    let other = match &eq.options { Options::Bundles(bs) => bs.iter().find(|x| !eq.selected.contains(&x.name)).unwrap().name.clone(), _ => unreachable!() };
+    ch.set_choice(&eq.path, vec![other]);
+    apply_starting_equipment(&mut ch, comp);
+    let (_, coins) = starting_equipment(&build(&ch, comp), comp);
+    let bg_coins: u32 = 0;
+    let _ = (n, bg_coins);
+    assert_eq!(ch.coins.total_cp() + 300, coins);
+}
+
+#[test]
+fn multiclass_requirements_checked() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+    ch.abilities = BaseAbilities { method: AbilityMethod::Manual, scores: [15, 10, 14, 8, 12, 10] };
+    ch.level_up(Key("wizard|xphb".into()));
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let iss = issues(&ch, &b, comp);
+    assert!(iss.iter().any(|i| i.text.contains("Wizard requires INT 13")), "{iss:?}");
 }

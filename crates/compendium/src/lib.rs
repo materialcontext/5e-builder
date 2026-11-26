@@ -116,9 +116,10 @@ impl Compendium {
         self.source(id).map(|s| s.name.clone()).unwrap_or_else(|| id.to_string())
     }
 
-    /// Subclasses available to a class.
+    /// Subclasses available to a class (including borrowed ones).
     pub fn subclasses_of<'a>(&'a self, class: &'a Key) -> impl Iterator<Item = &'a Subclass> + 'a {
-        self.subclasses.iter().filter(move |s| &s.class == class)
+        let borrowed: Vec<Key> = self.classes.get(class).map(|c| c.subclass_from.clone()).unwrap_or_default();
+        self.subclasses.iter().filter(move |s| &s.class == class || borrowed.contains(&s.class))
     }
 
     /// Display name for a key of any kind, falling back to the key's name part.

@@ -100,6 +100,7 @@ fn main_page(ch: &Character, s: &Sheet) -> impl IntoView {
         if s.darkvision > 0 {
             v.push(format!("Darkvision {} ft.", s.darkvision));
         }
+        v.extend(s.senses.iter().cloned());
         v.join(" · ")
     };
     let list = |label: &'static str, items: &[String]| {
@@ -152,6 +153,7 @@ fn main_page(ch: &Character, s: &Sheet) -> impl IntoView {
                         {list("Resistances", &s.resistances)}
                         {list("Immunities", &s.immunities)}
                         {list("Condition immunities", &s.condition_immunities)}
+                        {list("Vulnerabilities", &s.vulnerabilities)}
                     </div>
                     <div class="panel">
                         <h4>"Proficiencies & languages"</h4>

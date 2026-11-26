@@ -65,6 +65,13 @@ pub struct Lineage {
     /// The lineage is a complete variant of the species: its grants and
     /// features replace the species' own instead of adding to them.
     pub replaces_base: bool,
+    /// Species grants to use instead of the species' own when this lineage
+    /// overwrites some of them (e.g. its own languages).
+    #[serde(default)]
+    pub base_override: Option<Vec<Grant>>,
+    /// The lineage's ability bonuses replace the species' legacy ones.
+    #[serde(default)]
+    pub overrides_asi: bool,
     pub speed: Option<Speed>,
     pub darkvision: Option<u16>,
     pub grants: Vec<Grant>,
@@ -82,6 +89,8 @@ pub struct Background {
     pub has_asi: bool,
     /// Whether the background itself grants an origin feat (2024 style).
     pub has_feat: bool,
+    #[serde(default)]
+    pub prereq: Option<String>,
     pub grants: Vec<Grant>,
     pub features: Vec<Feature>,
 }
@@ -89,6 +98,24 @@ pub struct Background {
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Prereq {
     pub level: Option<u8>,
+    /// Class whose level `level` refers to (lowercase); character level when absent.
+    #[serde(default)]
+    pub level_class: Option<String>,
+    /// Lowercase species names; any one satisfies.
+    #[serde(default)]
+    pub species: Vec<String>,
+    /// Lowercase feat names; any one satisfies.
+    #[serde(default)]
+    pub feats: Vec<String>,
+    /// Lowercase spell names; any one satisfies.
+    #[serde(default)]
+    pub spells: Vec<String>,
+    /// Lowercase class feature / optional feature names; any one satisfies.
+    #[serde(default)]
+    pub features: Vec<String>,
+    /// Armor or weapon proficiency names (lowercase); all required.
+    #[serde(default)]
+    pub proficiencies: Vec<String>,
     /// Any one of these minimums satisfies the requirement.
     pub abilities: Vec<(Ability, u8)>,
     pub spellcasting: bool,
@@ -165,6 +192,9 @@ pub struct ClassFeature {
     pub grants: Vec<Grant>,
     /// "Gain a subclass feature" placeholder at this level.
     pub subclass_slot: bool,
+    /// Optional class feature (Tasha's): the player opts in.
+    #[serde(default)]
+    pub optional: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -196,6 +226,9 @@ pub struct Class {
     /// Proficiencies gained when multiclassing into this class.
     pub multiclass: Vec<Grant>,
     pub multiclass_req: Option<String>,
+    /// Multiclass requirement: every group must be met by any one of its scores.
+    #[serde(default)]
+    pub multiclass_abilities: Vec<Vec<(Ability, u8)>>,
     pub equipment: Vec<Grant>,
     pub features: Vec<ClassFeature>,
     pub subclass_title: String,
@@ -203,6 +236,9 @@ pub struct Class {
     /// Weapon masteries known at class level `i + 1`.
     pub weapon_mastery: Vec<u8>,
     pub grants: Vec<Grant>,
+    /// Other classes whose subclasses this class may also take.
+    #[serde(default)]
+    pub subclass_from: Vec<Key>,
 }
 
 impl Class {
