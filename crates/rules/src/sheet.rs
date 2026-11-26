@@ -397,7 +397,11 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         hp_max: hp.max(1),
         hit_dice,
         speed,
-        size: species.and_then(|s| s.sizes.first()).map(|s| s.name().to_string()).unwrap_or_else(|| "Medium".into()),
+        size: match species.map(|s| s.sizes.as_slice()) {
+            Some([one]) => one.name().to_string(),
+            Some(_) => ch.selected("species/size").first().cloned().unwrap_or_else(|| "Medium".into()),
+            None => "Medium".into(),
+        },
         darkvision,
         armor_profs: armor,
         weapon_profs: weapons,

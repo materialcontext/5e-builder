@@ -116,9 +116,11 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                 Options::AnyExoticLanguage => &["exotic", "rare"],
                 _ => &["standard", "exotic", "rare"],
             };
+            // A language's kind comes from its most authoritative source (2024 first).
+            let langs: Vec<&Language> = comp.languages.iter().filter(|l| enabled(&l.source)).collect();
             let mut names: BTreeMap<String, String> = BTreeMap::new();
-            for l in comp.languages.iter().filter(|l| kinds.contains(&l.kind.as_str()) && enabled(&l.source)) {
-                names.entry(l.name.to_lowercase()).or_insert_with(|| l.kind.clone());
+            for l in dedupe(langs.into_iter()).into_iter().filter(|l| kinds.contains(&l.kind.as_str())) {
+                names.insert(l.name.to_lowercase(), l.kind.clone());
             }
             if names.is_empty() {
                 for n in ["Common", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc"] {
@@ -182,8 +184,13 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
             .unwrap_or_default(),
         Options::Resist(list) => list.iter().map(|d| OptionItem::new(d.clone(), title_case(d))).collect(),
         Options::WeaponMastery => {
-            let weapons: Vec<&Item> =
-                comp.items.iter().filter(|i| i.rarity.is_none() && i.weapon.as_ref().is_some_and(|w| w.mastery.is_some()) && enabled(&i.source)).collect();
+            // Ordinary weapons only: no magic items, no futuristic firearms.
+            let weapons: Vec<&Item> = comp
+                .items
+                .iter()
+                .filter(|i| i.rarity.is_none() && enabled(&i.source))
+                .filter(|i| i.weapon.as_ref().is_some_and(|w| w.mastery.is_some() && !w.properties.iter().any(|p| p.contains("futuristic") || p == "reload")))
+                .collect();
             dedupe(weapons.into_iter())
                 .into_iter()
                 .map(|i| {

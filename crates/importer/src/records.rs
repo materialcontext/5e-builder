@@ -68,6 +68,12 @@ fn speed(v: Option<&Value>) -> Option<Speed> {
     }
 }
 
+/// Legacy species entries that only describe numbers already on the sheet.
+fn trait_features(v: Option<&Value>, refs: &Refs, fallback: &str) -> Vec<Feature> {
+    const DESCRIPTIVE: &[&str] = &["Age", "Alignment", "Size", "Speed", "Languages", "Language", "Creature Type"];
+    text::features(v, refs, fallback).into_iter().filter(|f| !DESCRIPTIVE.contains(&f.name.as_str())).collect()
+}
+
 fn toughness(features: &[Feature]) -> Vec<Grant> {
     if features.iter().any(|f| f.name == "Dwarven Toughness") {
         vec![Grant::HpPerLevel(1)]
@@ -96,7 +102,7 @@ pub fn species(data: &Value) -> Vec<Species> {
         let name = s(race, "name").to_string();
         let source = s(race, "source").to_string();
         let key = Key::new(&name, &source);
-        let features = text::features(race.get("entries"), &refs, "Traits");
+        let features = trait_features(race.get("entries"), &refs, "Traits");
         let mut grants = common_grants(race, "species");
         grants.extend(toughness(&features));
 
@@ -111,7 +117,7 @@ pub fn species(data: &Value) -> Vec<Species> {
                 "" => source.clone(),
                 x => x.to_string(),
             };
-            let feats = text::features(sub.get("entries"), &refs, &sub_name);
+            let feats = trait_features(sub.get("entries"), &refs, &sub_name);
             let mut lg = common_grants(sub, "lineage");
             lg.extend(toughness(&feats));
             lineages.push(Lineage {
@@ -134,7 +140,7 @@ pub fn species(data: &Value) -> Vec<Species> {
                 .or_else(|| vname.strip_prefix(&format!("{name} (")).and_then(|x| x.strip_suffix(')')))
                 .unwrap_or(&vname)
                 .to_string();
-            let feats = text::features(vo.get("entries"), &refs, "Traits");
+            let feats = trait_features(vo.get("entries"), &refs, "Traits");
             let mut lg = common_grants(vo, "species");
             lg.extend(toughness(&feats));
             lineages.push(Lineage {
@@ -363,7 +369,7 @@ fn totals(v: Option<&Value>) -> Vec<u8> {
             let mut steps: Vec<(u8, u8)> =
                 o.iter().filter_map(|(k, v)| Some((k.parse().ok()?, v.as_u64()? as u8))).collect();
             steps.sort();
-            (1..=20u8).map(|lvl| steps.iter().filter(|(l, _)| *l <= lvl).map(|(_, n)| *n).last().unwrap_or(0)).collect()
+            (1..=20u8).map(|lvl| steps.iter().filter(|(l, _)| *l <= lvl).map(|(_, n)| *n).next_back().unwrap_or(0)).collect()
         }
         _ => vec![],
     }

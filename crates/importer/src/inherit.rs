@@ -136,7 +136,7 @@ fn apply_mod(obj: &mut Map<String, Value>, prop: &str, m: &Value) {
         }
         "prependArr" => {
             let mut v = items;
-            v.extend(arr.drain(..));
+            v.append(arr);
             *arr = v;
         }
         "insertArr" => {

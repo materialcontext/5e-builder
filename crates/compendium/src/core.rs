@@ -192,9 +192,9 @@ pub fn modifier(score: i32) -> i32 {
 
 /// Formats copper pieces as the largest sensible coin, e.g. `15 GP`, `5 SP`.
 pub fn format_coins(cp: u32) -> String {
-    if cp >= 100 && cp % 100 == 0 {
+    if cp >= 100 && cp.is_multiple_of(100) {
         format!("{} GP", cp / 100)
-    } else if cp >= 10 && cp % 10 == 0 {
+    } else if cp >= 10 && cp.is_multiple_of(10) {
         format!("{} SP", cp / 10)
     } else {
         format!("{cp} CP")

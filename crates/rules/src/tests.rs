@@ -78,6 +78,8 @@ fn level_one_wizard_2024() {
     assert!(s.skills.iter().any(|x| x.skill == Skill::Arcana && x.prof != sheet::Proficiency::None));
     assert!(s.features.iter().any(|f| f.feature.name == "Arcane Recovery"));
     assert_eq!(s.darkvision, 60);
+    assert_eq!(s.languages.len(), 3, "{:?}", s.languages);
+    assert!(s.languages.contains(&"Common".to_string()));
 }
 
 #[test]
@@ -92,6 +94,10 @@ fn fighter_with_equipment_and_mastery() {
     assert_eq!(mastery.count, 3);
     assert!(b.feats.len() >= 2, "origin feat + human versatile + fighting style: {:?}", b.feats);
     let s = sheet(&ch, &b, comp);
+    assert!(b.choices.iter().any(|c| c.path == "species/size"));
+    let opts = options(mastery, &b, &ch, comp);
+    assert!(opts.iter().any(|o| o.label == "Longsword"));
+    assert!(!opts.iter().any(|o| o.label.contains("Rifle")));
     assert!(!ch.inventory.is_empty());
     assert!(s.armor_class >= 16, "chain mail: {} ({})", s.armor_class, s.ac_note);
     assert!(s.attacks.len() >= 2);
@@ -113,6 +119,9 @@ fn legacy_content_under_2024_rules() {
     let s = sheet(&ch, &b, comp);
     assert!(s.speed.walk == 25);
     assert!(s.resistances.iter().any(|r| r == "Poison"));
+    // Legacy dwarf defines its own languages (Common, Dwarvish); no extra picks.
+    assert!(!b.choices.iter().any(|c| c.path == "species/languages"));
+    assert!(s.languages.contains(&"Dwarvish".to_string()));
 
     ch.settings.legacy_species_asi = true;
     let b2 = build(&ch, comp);

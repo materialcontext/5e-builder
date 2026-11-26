@@ -15,12 +15,14 @@ use std::collections::BTreeMap;
 /// Wizard step a choice belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Step {
+    Basics,
     Class,
     Background,
     Species,
     Abilities,
     Spells,
     Equipment,
+    Details,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -40,8 +42,12 @@ pub struct ChoiceState {
 }
 
 impl ChoiceState {
+    /// Number of filled picks (positional choices may hold empty placeholders).
+    pub fn picked(&self) -> usize {
+        self.selected.iter().filter(|s| !s.is_empty()).count()
+    }
     pub fn is_complete(&self) -> bool {
-        self.selected.len() >= self.count as usize
+        self.picked() >= self.count as usize
     }
     /// Picks are positional (e.g. +2 then +1).
     pub fn ordered(&self) -> bool {
@@ -214,6 +220,15 @@ impl<'a> Walker<'a> {
             let path = self.register(&c, &ctx);
             lineage = self.ch.selected(&path).first().and_then(|v| sp.lineages.iter().find(|l| l.key.0 == *v));
         }
+        if sp.sizes.len() > 1 {
+            let c = Choice {
+                id: "size".into(),
+                label: "Size".into(),
+                count: Count::Fixed(1),
+                options: Options::Bundles(sp.sizes.iter().map(|s| Bundle { name: s.name().into(), grants: vec![] }).collect()),
+            };
+            self.register(&c, &ctx);
+        }
         let legacy_asi = self.ch.settings.legacy_species_asi;
         let replaces = lineage.is_some_and(|l| l.replaces_base);
         let mut features: Vec<&Feature> = Vec::new();
@@ -236,6 +251,21 @@ impl<'a> Walker<'a> {
                 let g = l.legacy_asi.clone();
                 self.walk(&g, &lctx.child("asi"));
             }
+        }
+        // 2024 rules: Common plus two standard languages, unless the (legacy)
+        // species already defines its languages.
+        let species_langs = gives_languages(&sp.grants) || lineage.is_some_and(|l| gives_languages(&l.grants));
+        if !species_langs {
+            let langs = vec![
+                Grant::Prof(Prof::Language("Common".into())),
+                Grant::Choose(Choice {
+                    id: "languages".into(),
+                    label: "Languages".into(),
+                    count: Count::Fixed(2),
+                    options: Options::AnyStandardLanguage,
+                }),
+            ];
+            self.walk(&langs, &Ctx { origin: "Character".into(), ..ctx.clone() });
         }
         for f in features {
             if legacy_asi || !is_asi_feature(&f.name) {
@@ -740,6 +770,19 @@ pub fn pick_count(c: &Choice, level: u8) -> u8 {
         Options::Abilities { amounts, .. } if c.count.at(level) > 0 => amounts.len() as u8,
         _ => c.count.at(level),
     }
+}
+
+fn gives_languages(grants: &[Grant]) -> bool {
+    grants.iter().any(|g| match g {
+        Grant::Prof(Prof::Language(_)) => true,
+        Grant::Choose(c) => match &c.options {
+            Options::Languages(_) | Options::AnyLanguage | Options::AnyStandardLanguage | Options::AnyExoticLanguage => true,
+            Options::Bundles(b) => b.iter().any(|b| gives_languages(&b.grants)),
+            _ => false,
+        },
+        Grant::AtLevel { grants, .. } => gives_languages(grants),
+        _ => false,
+    })
 }
 
 fn is_asi_feature(name: &str) -> bool {

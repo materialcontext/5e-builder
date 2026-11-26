@@ -40,7 +40,7 @@ pub fn issues(ch: &Character, b: &Build, comp: &Compendium) -> Vec<Issue> {
         push(Step::Abilities, p);
     }
     for c in &b.choices {
-        let n = c.selected.len();
+        let n = c.picked();
         if n < c.count as usize {
             let what = c.options.noun();
             let left = c.count as usize - n;
@@ -55,7 +55,7 @@ pub fn issues(ch: &Character, b: &Build, comp: &Compendium) -> Vec<Issue> {
         }
     }
     if ch.name.trim().is_empty() {
-        push(Step::Equipment, "Give your character a name.".into());
+        push(Step::Details, "Give your character a name.".into());
     }
     for w in &b.warnings {
         push(Step::Class, w.clone());
