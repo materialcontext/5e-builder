@@ -288,6 +288,15 @@ pub fn spell_filter(s: &str) -> SpellFilter {
             "class" => f.classes = vals.iter().map(|x| x.to_lowercase()).collect(),
             "school" => f.schools = vals.iter().map(|x| x.to_uppercase()).collect(),
             "components & miscellaneous" => f.ritual = vals.iter().any(|x| x.eq_ignore_ascii_case("ritual")),
+            "spell attack" => f.spell_attack = vals.iter().map(|x| x.to_lowercase()).collect(),
+            "source" => {
+                for v in vals {
+                    match v.strip_prefix('!') {
+                        Some(x) => f.exclude_sources.push(x.to_uppercase()),
+                        None => f.sources.push(v.to_uppercase()),
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -347,6 +356,7 @@ fn spell_list(v: &Value, level: u8, kind: &SpellKind, out: &mut Vec<SpellGrant>)
 
 /// One `additionalSpells` entry.
 pub fn spell_group(o: &Obj) -> SpellGroup {
+    // No ability (or "inherit"): resolved by the engine from the granting feat or class.
     let ability = match o.get("ability") {
         Some(Value::String(s)) => Ability::parse(s).map(SpellAbility::Fixed).unwrap_or(SpellAbility::Inherit),
         Some(Value::Object(c)) => SpellAbility::Choose(str_list(c.get("choose")).iter().filter_map(|s| Ability::parse(s)).collect()),
@@ -379,7 +389,18 @@ pub fn additional_spells(v: Option<&Value>, id: &str) -> Vec<Grant> {
             let bundles = groups
                 .into_iter()
                 .enumerate()
-                .map(|(i, g)| Bundle { name: g.name.clone().unwrap_or_else(|| format!("Option {}", i + 1)), grants: vec![Grant::Spells(g)] })
+                .map(|(i, g)| {
+                    let fixed: Vec<String> = g
+                        .spells
+                        .iter()
+                        .filter_map(|s| match &s.pick {
+                            SpellPick::Fixed(k) => Some(title_case(k.name_part())),
+                            _ => None,
+                        })
+                        .collect();
+                    let name = g.name.clone().unwrap_or_else(|| if fixed.is_empty() { format!("Option {}", i + 1) } else { fixed.join(", ") });
+                    Bundle { name, grants: vec![Grant::Spells(g)] }
+                })
                 .collect();
             vec![choose(id, "Spells", 1, Options::Bundles(bundles))]
         }
@@ -510,7 +531,9 @@ pub fn prereq(v: Option<&Value>) -> Option<Prereq> {
             p.proficiencies.push(v.to_lowercase());
         }
     }
-    p.spellcasting = first.contains_key("spellcasting") || first.contains_key("spellcasting2020") || first.contains_key("spellcastingFeature");
+    p.spellcasting = first.contains_key("spellcasting");
+    p.spellcasting_feature =
+        first.contains_key("spellcasting2020") || first.contains_key("spellcastingFeature") || first.contains_key("spellcastingPrepared");
     let texts: Vec<String> = alts.iter().filter_map(Value::as_object).map(prereq_text).filter(|s| !s.is_empty()).collect();
     p.text = texts.join("; or ");
     Some(p)

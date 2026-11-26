@@ -934,6 +934,11 @@ pub fn spells(files: &[Value], lookup: &Value) -> Vec<Spell> {
                 duration,
                 concentration,
                 ritual: o.get("meta").and_then(|m| m.get("ritual")).and_then(Value::as_bool).unwrap_or(false),
+                attack: o
+                    .get("spellAttack")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(Value::as_str).map(|x| x.to_lowercase()).collect())
+                    .unwrap_or_default(),
                 classes: classes.into_iter().collect(),
                 body,
                 name,

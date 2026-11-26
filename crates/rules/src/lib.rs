@@ -67,6 +67,9 @@ pub fn issues(ch: &Character, b: &Build, comp: &Compendium) -> Vec<Issue> {
             push(Step::Class, format!("Roll hit points for level {}.", i + 1));
         }
     }
+    for dup in repeated_feat_options(b, comp) {
+        push(Step::Background, dup);
+    }
     let attuned = ch.inventory.iter().filter(|i| i.attuned).count();
     if attuned > 3 {
         push(Step::Equipment, format!("Attuned to {attuned} items; the limit is 3."));
@@ -76,6 +79,39 @@ pub fn issues(ch: &Character, b: &Build, comp: &Compendium) -> Vec<Issue> {
     }
     for w in &b.warnings {
         push(Step::Class, w.clone());
+    }
+    out
+}
+
+/// Repeatable feats such as Magic Initiate must use a different option (spell
+/// list) each time, including versions granted by backgrounds.
+fn repeated_feat_options(b: &Build, comp: &Compendium) -> Vec<String> {
+    let mut taken: Vec<(String, String)> = Vec::new();
+    for (k, _) in &b.feats {
+        if let Some(f) = comp.feats.get(k) {
+            if let (Some(base), Some(list)) = (&f.version_of, f.name.split("; ").nth(1)) {
+                taken.push((base.name_part().to_string(), list.to_lowercase()));
+            }
+        }
+    }
+    for c in &b.choices {
+        let Options::Bundles(bundles) = &c.options else { continue };
+        if !bundles.iter().all(|x| x.grants.iter().all(|g| matches!(g, Grant::Spells(_)))) {
+            continue;
+        }
+        let feat = c.path.split('/').filter_map(|seg| comp.feats.get(&Key(seg.trim_start_matches("feat:").to_string()))).last();
+        if let (Some(f), Some(sel)) = (feat, c.selected.first()) {
+            if f.repeatable && f.version_of.is_none() {
+                let list = sel.split_whitespace().next().unwrap_or("").to_lowercase();
+                taken.push((f.key.name_part().to_string(), list));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (i, t) in taken.iter().enumerate() {
+        if taken[..i].contains(t) {
+            out.push(format!("{} is taken twice with the {} list; each time must use a different list.", title_case(&t.0), title_case(&t.1)));
+        }
     }
     out
 }

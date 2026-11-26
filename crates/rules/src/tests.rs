@@ -439,3 +439,192 @@ fn rolled_scores() {
     let b = BaseAbilities { method: AbilityMethod::Rolled, scores: [r[0], r[1], r[2], r[3], r[4], r[5]], rolls: r.clone() };
     assert!(ability_problem(&b).is_none());
 }
+
+fn has_spells(grants: &[compendium::Grant]) -> bool {
+    use compendium::Grant;
+    grants.iter().any(|g| match g {
+        Grant::Spells(_) => true,
+        Grant::Choose(c) => matches!(&c.options, Options::Bundles(b) if b.iter().any(|x| has_spells(&x.grants))),
+        Grant::AtLevel { grants, .. } => has_spells(grants),
+        _ => false,
+    })
+}
+
+/// A level-`lvl` caster whose first Ability Score Improvement takes `feat`.
+fn with_feat(class: &str, lvl: u8, feat: &str, comp: &Compendium) -> Character {
+    let mut ch = hero(class, "sage|xphb", "human|xphb");
+    ch.abilities = BaseAbilities { method: AbilityMethod::Manual, scores: [13, 14, 14, 15, 13, 13], rolls: vec![] };
+    ch.set_starting_level(lvl);
+    let asi = build(&ch, comp).choices.iter().find(|c| c.label.starts_with("Ability Score Improvement")).unwrap().path.clone();
+    ch.set_choice(&asi, vec![feat.into()]);
+    autofill(&mut ch, comp);
+    ch
+}
+
+#[test]
+fn every_spell_feat_works_in_a_build() {
+    let Some(comp) = comp() else { return };
+    let mut failures = Vec::new();
+    for f in comp.feats.iter().filter(|f| has_spells(&f.grants)) {
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| with_feat("wizard|xphb", 8, &f.key.0, comp)));
+        let Ok(ch) = r else {
+            failures.push(format!("{}: choices cannot be completed", f.key));
+            continue;
+        };
+        let b = build(&ch, comp);
+        let origin = format!("Feat: {}", f.name);
+        let mine: Vec<_> = b.spells.iter().filter(|s| s.origin == origin).collect();
+        if mine.is_empty() {
+            failures.push(format!("{}: grants no spells", f.key));
+        }
+        for s in mine.iter().filter(|s| s.ability.is_none()) {
+            failures.push(format!("{}: {} has no spellcasting ability", f.key, s.key));
+        }
+        for s in &mine {
+            if comp.spells.get(&s.key).is_none() {
+                failures.push(format!("{}: unknown spell {}", f.key, s.key));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} problems:\n{}", failures.len(), failures.join("\n"));
+}
+
+#[test]
+fn fey_touched_uses_the_raised_ability() {
+    let Some(comp) = comp() else { return };
+    let mut ch = with_feat("fighter|xphb", 4, "fey-touched|xphb", comp);
+    let b = build(&ch, comp);
+    let asi = b.choices.iter().find(|c| c.path.contains("fey-touched|xphb") && matches!(c.options, Options::Abilities { .. })).unwrap().path.clone();
+    ch.set_choice(&asi, vec!["wis".into()]);
+    let b = build(&ch, comp);
+    let misty = b.spells.iter().find(|s| s.key.0 == "misty step|xphb").expect("misty step");
+    assert_eq!(misty.ability, Some(Ability::Wis));
+    let s = sheet(&ch, &b, comp);
+    assert!(s.casting.iter().any(|c| c.ability == Ability::Wis));
+}
+
+#[test]
+fn spell_sniper_offers_only_attack_cantrips() {
+    let Some(comp) = comp() else { return };
+    let mut ch = with_feat("wizard|phb", 4, "spell sniper|phb", comp);
+    let b = build(&ch, comp);
+    let list = b.choices.iter().find(|c| c.path.contains("spell sniper|phb") && matches!(c.options, Options::Bundles(_))).unwrap().path.clone();
+    ch.set_choice(&list, vec!["Wizard Spells".into()]);
+    let b = build(&ch, comp);
+    let pick = b.choices.iter().find(|c| c.path.contains("spell sniper|phb") && matches!(c.options, Options::Spells(_))).unwrap();
+    let opts = options(pick, &b, &ch, comp);
+    assert!(!opts.is_empty());
+    for o in &opts {
+        let sp = comp.spells.get(&Key(o.value.clone())).unwrap();
+        assert!(!sp.attack.is_empty() && sp.level == 0, "{} is not an attack cantrip", sp.name);
+    }
+    assert!(opts.iter().any(|o| o.label == "Fire Bolt"));
+    assert!(!opts.iter().any(|o| o.label == "Prestidigitation"));
+}
+
+#[test]
+fn spellcasting_feature_prerequisite() {
+    let Some(comp) = comp() else { return };
+    let war_caster = comp.feats.get(&Key("war caster|xphb".into())).unwrap().prereq.clone().unwrap();
+    // A fighter with Magic Initiate can cast spells but has no Spellcasting feature.
+    let mut fighter = hero("fighter|xphb", "acolyte|xphb", "human|xphb");
+    fighter.set_starting_level(4);
+    autofill(&mut fighter, comp);
+    let b = build(&fighter, comp);
+    assert!(!b.spells.is_empty());
+    assert!(options::prereq_problem_in(&war_caster, &b, &fighter, Some(comp)).is_some());
+    let mut cleric = hero("cleric|xphb", "acolyte|xphb", "human|xphb");
+    cleric.set_starting_level(4);
+    let b = build(&cleric, comp);
+    assert!(options::prereq_problem_in(&war_caster, &b, &cleric, Some(comp)).is_none());
+}
+
+#[test]
+fn ritual_caster_2024() {
+    let Some(comp) = comp() else { return };
+    let ch = with_feat("fighter|xphb", 5, "ritual caster|xphb", comp);
+    let b = build(&ch, comp);
+    let mine: Vec<_> = b.spells.iter().filter(|s| s.origin == "Feat: Ritual Caster").collect();
+    assert_eq!(mine.len(), 3, "proficiency bonus at level 5");
+    for s in &mine {
+        let sp = comp.spells.get(&s.key).unwrap();
+        assert!(sp.ritual && sp.level == 1, "{}", sp.name);
+        assert!(s.ability.is_some());
+    }
+}
+
+#[test]
+fn graviturgy_offers_only_dunamancy() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("wizard|phb", "sage|xphb", "human|xphb");
+    ch.set_starting_level(2);
+    let b = build(&ch, comp);
+    let sub = choice_with(&b, "/subclass").path.clone();
+    let grav = comp.subclasses_of(&Key("wizard|phb".into())).find(|s| s.short_name == "Graviturgy").unwrap().key.0.clone();
+    ch.set_choice(&sub, vec![grav]);
+    let b = build(&ch, comp);
+    let pick = b.choices.iter().find(|c| c.path.contains("graviturgy") && matches!(&c.options, Options::Spells(f) if !f.sources.is_empty()));
+    if let Some(pick) = pick {
+        for o in options(pick, &b, &ch, comp) {
+            assert_eq!(comp.spells.get(&Key(o.value.clone())).unwrap().source, "EGW", "{}", o.label);
+        }
+    }
+}
+
+#[test]
+fn guild_and_college_backgrounds_expand_class_lists() {
+    let Some(comp) = comp() else { return };
+    let mut failures = Vec::new();
+    for bg in comp.backgrounds.iter().filter(|b| has_spells(&b.grants)) {
+        let mut ch = hero("wizard|xphb", &bg.key.0, "human|xphb");
+        ch.set_starting_level(9);
+        let b = build(&ch, comp);
+        if b.expanded.is_empty() {
+            failures.push(format!("{}: no expanded spells", bg.key));
+            continue;
+        }
+        // Some expanded spell that isn't normally a wizard spell must become selectable.
+        let offered: Vec<String> = ["/cantrips", "/spellbook", "/prepared"]
+            .iter()
+            .flat_map(|p| option_labels(&ch, &b, choice_with(&b, p), comp))
+            .collect();
+        let extra = b.expanded.iter().filter_map(|(_, e)| match e {
+            build::Expansion::Spell(k) => comp.spells.iter().find(|s| s.name.to_lowercase() == k.name_part() && !s.classes.contains(&"wizard".to_string())),
+            _ => None,
+        }).find(|s| s.level <= 5);
+        if let Some(sp) = extra {
+            if !offered.contains(&sp.name) {
+                failures.push(format!("{}: {} not offered to a wizard", bg.key, sp.name));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+#[test]
+fn magic_initiate_twice_with_the_same_list_is_flagged() {
+    let Some(comp) = comp() else { return };
+    // Acolyte gives Magic Initiate (Cleric); take Magic Initiate again with the Cleric list.
+    let mut ch = with_feat("wizard|xphb", 4, "magic initiate|xphb", comp);
+    ch.set_background(Some(Key("acolyte|xphb".into())));
+    let b = build(&ch, comp);
+    let list = b.choices.iter().find(|c| c.path.contains("/magic initiate|xphb") && matches!(c.options, Options::Bundles(_))).unwrap().path.clone();
+    ch.set_choice(&list, vec!["Cleric Spells".into()]);
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    assert!(issues(&ch, &b, comp).iter().any(|i| i.text.contains("Magic Initiate is taken twice")));
+    ch.set_choice(&list, vec!["Druid Spells".into()]);
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    assert!(!issues(&ch, &b, comp).iter().any(|i| i.text.contains("taken twice")));
+}
+
+#[test]
+fn rune_shaper_knows_half_proficiency_runes() {
+    let Some(comp) = comp() else { return };
+    let ch = with_feat("fighter|xphb", 4, "rune shaper|bgg", comp);
+    let b = build(&ch, comp);
+    let mine: Vec<_> = b.spells.iter().filter(|s| s.origin == "Feat: Rune Shaper").collect();
+    assert_eq!(mine.len(), 2, "comprehend languages + 1 rune: {mine:?}");
+    assert!(mine.iter().all(|s| s.ability.is_some()));
+}

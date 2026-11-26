@@ -169,6 +169,8 @@ struct Ctx {
     gained_at: u8,
     kind: FeatureKind,
     casting: Option<(Option<Ability>, Key)>,
+    /// Ability raised by the granting feat; used by its "inherit" spells.
+    inherit_ability: Option<Ability>,
 }
 
 impl Ctx {
@@ -216,6 +218,7 @@ impl<'a> Walker<'a> {
             gained_at: 1,
             kind: FeatureKind::Species,
             casting: None,
+            inherit_ability: None,
         };
         let mut lineage = None;
         if !sp.lineages.is_empty() {
@@ -296,6 +299,7 @@ impl<'a> Walker<'a> {
             gained_at: 1,
             kind: FeatureKind::Background,
             casting: None,
+            inherit_ability: None,
         };
         let legacy_asi = self.ch.settings.legacy_species_asi;
         let mut grants: Vec<Grant> = bg
@@ -347,6 +351,7 @@ impl<'a> Walker<'a> {
                 gained_at: 1,
                 kind: FeatureKind::Class,
                 casting: Some((class.spellcasting.ability, key.clone())),
+                inherit_ability: None,
             };
             let mut state = ClassState { key: key.clone(), level, subclass: None };
 
@@ -689,6 +694,41 @@ impl<'a> Walker<'a> {
             casting: None,
             ..ctx.clone()
         };
+        // The ability this feat increases (fixed or chosen) is the spellcasting
+        // ability of its spells when they don't name one (Fey-Touched, Ritual Caster).
+        let raised = feat.grants.iter().find_map(|g| match g {
+            Grant::Ability { ability, .. } if matches!(ability, Ability::Int | Ability::Wis | Ability::Cha) => Some(*ability),
+            Grant::Choose(c) => match &c.options {
+                Options::Abilities { amounts, .. } if amounts.iter().any(|a| *a != 0) => {
+                    self.ch.selected(&format!("{}/{}", fctx.path, c.id)).first().and_then(|v| Ability::parse(v))
+                }
+                Options::Bundles(bs) => {
+                    // ASI feat style: alternatives of ability choices.
+                    let sel = self.ch.selected(&format!("{}/{}", fctx.path, c.id)).first()?.clone();
+                    let b = bs.iter().find(|b| b.name == sel)?;
+                    b.grants.iter().find_map(|g| match g {
+                        Grant::Choose(inner) if matches!(inner.options, Options::Abilities { .. }) => self
+                            .ch
+                            .selected(&format!("{}/{}/{}/{}", fctx.path, c.id, sel, inner.id))
+                            .first()
+                            .and_then(|v| Ability::parse(v)),
+                        _ => None,
+                    })
+                }
+                _ => None,
+            },
+            _ => None,
+        });
+        // Otherwise an ability chosen for one of the feat's spell groups (Rune Shaper).
+        let raised = raised.or_else(|| {
+            feat.grants.iter().enumerate().find_map(|(i, g)| match g {
+                Grant::Spells(SpellGroup { ability: SpellAbility::Choose(_), .. }) => {
+                    self.ch.selected(&format!("{}/g{i}/ability", fctx.path)).first().and_then(|v| Ability::parse(v))
+                }
+                _ => None,
+            })
+        });
+        let fctx = Ctx { inherit_ability: raised, ..fctx };
         self.feature(Feature { name: feat.name.clone(), body: feat.body.clone() }, &fctx);
         let g = feat.grants.clone();
         self.walk(&g, &fctx);
@@ -697,7 +737,7 @@ impl<'a> Walker<'a> {
     fn spell_group(&mut self, group: &SpellGroup, ctx: &Ctx) {
         let ability = match &group.ability {
             SpellAbility::Fixed(a) => Some(*a),
-            SpellAbility::Inherit => ctx.casting.as_ref().and_then(|c| c.0),
+            SpellAbility::Inherit => ctx.inherit_ability.or_else(|| ctx.casting.as_ref().and_then(|c| c.0)),
             SpellAbility::Choose(from) => {
                 let c = Choice {
                     id: "ability".into(),
@@ -787,6 +827,17 @@ impl<'a> Walker<'a> {
             scores[a.index()] = scores[a.index()].min(max[a.index()].max(base));
         }
         self.out.scores = scores;
+        // Spells with no ability of their own (e.g. Cartomancer's cantrip) use the
+        // character's first spellcasting class ability.
+        let class_ability = self
+            .out
+            .classes
+            .iter()
+            .filter_map(|c| self.comp.classes.get(&c.key))
+            .find_map(|c| c.spellcasting.ability.filter(|_| c.spellcasting.is_caster()));
+        for s in self.out.spells.iter_mut().filter(|s| s.ability.is_none()) {
+            s.ability = class_ability;
+        }
         for (idx, formula, level, ability) in std::mem::take(&mut self.formulas) {
             let _ = ability;
             let n = eval_formula(&formula, level as i32, &scores).max(1);

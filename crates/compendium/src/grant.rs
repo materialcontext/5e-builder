@@ -163,6 +163,15 @@ pub struct SpellFilter {
     pub schools: Vec<String>,
     #[serde(default)]
     pub ritual: bool,
+    /// Spell attack kinds (`m`, `r`, `o`); non-empty: the spell must make a spell attack.
+    #[serde(default)]
+    pub spell_attack: Vec<String>,
+    /// Allowed sources (empty: any).
+    #[serde(default)]
+    pub sources: Vec<String>,
+    /// Excluded sources.
+    #[serde(default)]
+    pub exclude_sources: Vec<String>,
     /// Restrict to the spells selected for another choice (full choice id).
     #[serde(default)]
     pub within_choice: Option<String>,
@@ -177,7 +186,8 @@ pub struct SpellGroup {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SpellAbility {
-    /// Use the owning class's spellcasting ability (or none).
+    /// Use the ability raised by the granting feat (Fey-Touched, Ritual
+    /// Caster, ...), else the owning class's spellcasting ability.
     Inherit,
     Fixed(Ability),
     Choose(Vec<Ability>),

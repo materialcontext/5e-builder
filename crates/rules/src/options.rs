@@ -333,7 +333,26 @@ pub fn prereq_problem_in(p: &Prereq, build: &Build, ch: &Character, comp: Option
     if p.spellcasting && build.spells.is_empty() {
         return Some("Requires the ability to cast spells".into());
     }
+    if p.spellcasting_feature {
+        let has = comp.is_some_and(|comp| has_spellcasting_feature(build, comp));
+        if !has {
+            return Some("Requires the Spellcasting or Pact Magic feature".into());
+        }
+    }
     None
+}
+
+/// Whether a class (or subclass) gives the character the Spellcasting or Pact Magic feature.
+pub fn has_spellcasting_feature(build: &Build, comp: &Compendium) -> bool {
+    build.classes.iter().any(|cs| {
+        let class = comp.classes.get(&cs.key);
+        let sub = cs.subclass.as_ref().and_then(|k| comp.subclasses.get(k));
+        let casts = |sc: &Spellcasting| {
+            crate::spellcasting::max_spell_level(sc.caster, cs.level, class.is_some_and(|c| c.legacy)) > 0
+                || sc.cantrips.get(cs.level.saturating_sub(1) as usize).is_some_and(|n| *n > 0)
+        };
+        class.is_some_and(|c| casts(&c.spellcasting)) || sub.is_some_and(|s| casts(&s.spellcasting))
+    })
 }
 
 fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Compendium) -> Vec<OptionItem> {
@@ -413,6 +432,9 @@ fn spell_options(filter: &SpellFilter, choice: &ChoiceState, build: &Build, ch: 
         .filter(|s| filter.classes.is_empty() || filter.classes.iter().any(|c| s.classes.contains(c)) || expanded(s))
         .filter(|s| filter.schools.is_empty() || filter.schools.contains(&s.school))
         .filter(|s| !filter.ritual || s.ritual)
+        .filter(|s| filter.spell_attack.is_empty() || !s.attack.is_empty())
+        .filter(|s| filter.sources.is_empty() || filter.sources.iter().any(|x| x.eq_ignore_ascii_case(&s.source)))
+        .filter(|s| !filter.exclude_sources.iter().any(|x| x.eq_ignore_ascii_case(&s.source)))
         .filter(|s| within.as_ref().is_none_or(|w| w.contains(s.key.0.as_str())))
         .collect();
     let mut out: Vec<OptionItem> = dedupe(spells.into_iter())

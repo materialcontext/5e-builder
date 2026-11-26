@@ -119,6 +119,9 @@ pub struct Prereq {
     /// Any one of these minimums satisfies the requirement.
     pub abilities: Vec<(Ability, u8)>,
     pub spellcasting: bool,
+    /// Requires the Spellcasting or Pact Magic class feature (not just any spell).
+    #[serde(default)]
+    pub spellcasting_feature: bool,
     /// Human readable summary of all prerequisites.
     pub text: String,
 }
@@ -284,6 +287,9 @@ pub struct Spell {
     pub duration: String,
     pub concentration: bool,
     pub ritual: bool,
+    /// Spell attack kinds: `m` (melee), `r` (ranged).
+    #[serde(default)]
+    pub attack: Vec<String>,
     /// Lowercase class names whose list includes this spell.
     pub classes: Vec<String>,
     pub body: Vec<Entry>,
