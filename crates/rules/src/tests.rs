@@ -628,3 +628,66 @@ fn rune_shaper_knows_half_proficiency_runes() {
     assert_eq!(mine.len(), 2, "comprehend languages + 1 rune: {mine:?}");
     assert!(mine.iter().all(|s| s.ability.is_some()));
 }
+
+#[test]
+fn per_record_audit_regressions() {
+    let Some(comp) = comp() else { return };
+    // Strike of the Giants: the base feat offers the giant type.
+    let ch = with_feat("fighter|xphb", 4, "strike of the giants|bgg", comp);
+    let b = build(&ch, comp);
+    assert!(b.feats.iter().any(|(k, _)| k.0.starts_with("strike of the giants; ")), "{:?}", b.feats);
+    // Genie Touched grants Magic Initiate (Wizard).
+    let ch = hero("wizard|xphb", "genie touched|frhof", "human|xphb");
+    assert!(build(&ch, comp).feats.iter().any(|(k, _)| k.0 == "magic initiate; wizard|xphb"));
+    // Monk Diamond Soul: every save.
+    let mut monk = hero("monk|phb", "acolyte|phb", "human|phb");
+    monk.set_starting_level(14);
+    let b = build(&monk, comp);
+    assert!(Ability::ALL.iter().all(|a| b.has_prof(&Prof::Save(*a))));
+    // Unarmored Defense from data: barbarian DEX + CON.
+    let mut barb = hero("barbarian|xphb", "soldier|xphb", "human|xphb");
+    barb.abilities = BaseAbilities { method: AbilityMethod::Manual, scores: [15, 14, 16, 8, 10, 8], rolls: vec![] };
+    autofill(&mut barb, comp);
+    barb.inventory.iter_mut().for_each(|i| i.equipped = false);
+    let b = build(&barb, comp);
+    let s = sheet(&barb, &b, comp);
+    assert_eq!(s.armor_class, 10 + b.modifier(Ability::Dex) + b.modifier(Ability::Con), "{}", s.ac_note);
+    // Tortle natural armor 17; Warforged +1.
+    let tortle = hero("wizard|xphb", "sage|xphb", "tortle|mpmm");
+    let b = build(&tortle, comp);
+    assert_eq!(sheet(&tortle, &b, comp).armor_class, 17);
+    // Draconic sorcerer: +1 HP per sorcerer level.
+    let mut sorc = hero("sorcerer|xphb", "sage|xphb", "human|xphb");
+    sorc.set_starting_level(3);
+    let b = build(&sorc, comp);
+    let sub = choice_with(&b, "/subclass").path.clone();
+    let before = sheet(&sorc, &b, comp).hp_max;
+    let draconic = comp.subclasses_of(&Key("sorcerer|xphb".into())).find(|s| s.short_name == "Draconic" && s.source == "XPHB").unwrap().key.0.clone();
+    sorc.set_choice(&sub, vec![draconic]);
+    let b = build(&sorc, comp);
+    assert_eq!(sheet(&sorc, &b, comp).hp_max, before + 3);
+    // 2014 Rogue Expertise can pick thieves' tools.
+    let rogue = hero("rogue|phb", "criminal|phb", "human|phb");
+    let b = build(&rogue, comp);
+    let exp = b.choices.iter().find(|c| c.label == "Expertise").unwrap();
+    assert!(options(exp, &b, &rogue, comp).iter().any(|o| o.value == "tool:thieves' tools"));
+    // Speed feats.
+    let ch = with_feat("fighter|xphb", 4, "speedy|xphb", comp);
+    let b = build(&ch, comp);
+    assert_eq!(sheet(&ch, &b, comp).speed.walk, 40);
+    // Gloom Stalker 2024 Umbral Sight stacks on existing darkvision.
+    let mut gs = hero("ranger|xphb", "sage|xphb", "dwarf|xphb");
+    gs.set_starting_level(3);
+    let b = build(&gs, comp);
+    let sub = choice_with(&b, "/subclass").path.clone();
+    let gloom = comp.subclasses_of(&Key("ranger|xphb".into())).find(|s| s.short_name == "Gloom Stalker" && s.source == "XPHB").unwrap().key.0.clone();
+    gs.set_choice(&sub, vec![gloom]);
+    let b = build(&gs, comp);
+    assert_eq!(sheet(&gs, &b, comp).darkvision, 120 + 60);
+    // 2024 Ranger Roving: +10 speed, climb and swim equal to speed.
+    let mut r = hero("ranger|xphb", "sage|xphb", "human|xphb");
+    r.set_starting_level(6);
+    let b = build(&r, comp);
+    let s = sheet(&r, &b, comp);
+    assert_eq!((s.speed.walk, s.speed.climb, s.speed.swim), (40, 40, 40));
+}

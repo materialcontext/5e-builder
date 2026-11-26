@@ -108,6 +108,18 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                 })
                 .collect()
         }
+        Options::ToolExpertise(list) => list
+            .iter()
+            .map(|t| {
+                let p = Prof::Tool(t.clone());
+                let mut o = OptionItem::new(encode_prof(&p), format!("{} (expertise)", title_case(t)));
+                let proficient = build.profs().any(|x| matches!(x, Prof::Tool(n) if n.eq_ignore_ascii_case(t)));
+                if !proficient {
+                    o.disabled = Some("Requires proficiency".into());
+                }
+                o
+            })
+            .collect(),
         Options::Saves(list) => list.iter().map(|a| prof_item(Prof::Save(*a), format!("{} saving throws", a.name()))).collect(),
         Options::Tools(list) => list.iter().map(|t| prof_item(Prof::Tool(t.clone()), title_case(t))).collect(),
         Options::AnyTool => tool_names(comp, &enabled, &[]).into_iter().map(|t| prof_item(Prof::Tool(t.clone()), title_case(&t))).collect(),

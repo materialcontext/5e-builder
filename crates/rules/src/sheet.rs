@@ -147,6 +147,14 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
             list.0.push(label);
         }
     }
+    for g in &build.grants {
+        if let Grant::ToolExpertise(t) = &g.grant {
+            let label = title_case(t);
+            for x in tools.iter_mut().filter(|x| **x == label) {
+                x.push_str(" (expertise)");
+            }
+        }
+    }
 
     let abilities: Vec<AbilityLine> = Ability::ALL
         .iter()
@@ -193,6 +201,11 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
             darkvision = darkvision.max(r);
         }
     }
+    for g in &build.grants {
+        if let Grant::DarkvisionBonus { base, bonus } = g.grant {
+            darkvision = if darkvision == 0 { base } else { darkvision + bonus };
+        }
+    }
 
     // Equipment.
     let item = |k: &Option<Key>| k.as_ref().and_then(|k| comp.items.get(k));
@@ -206,35 +219,32 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         .filter_map(|i| item(&i.item))
         .find(|it| it.armor.as_ref().is_some_and(|a| a.kind == ArmorKind::Shield));
 
-    let class_names: Vec<String> = build.classes.iter().filter_map(|c| comp.classes.get(&c.key)).map(|c| c.name.clone()).collect();
-    let has_class = |n: &str| class_names.iter().any(|c| c == n);
 
-    // Armor class: best of the available calculations.
+    // Armor class: worn armor, else the best unarmored formula; then shield and bonuses.
     let dex = m(Ability::Dex);
-    let (mut ac, mut ac_note) = match worn_armor.and_then(|a| a.armor.as_ref().map(|s| (a, s))) {
+    let medium_cap = if build.feats.iter().any(|(k, _)| k.name_part() == "medium armor master") { 3 } else { 2 };
+    let worn = worn_armor.and_then(|a| a.armor.as_ref().map(|s| (a, s)));
+    let (mut ac, mut ac_note) = match worn {
         Some((it, a)) => {
             let base = a.ac as i32 + it.bonus as i32;
             match a.kind {
                 ArmorKind::Light => (base + dex, it.name.clone()),
-                ArmorKind::Medium => (base + dex.min(2), it.name.clone()),
+                ArmorKind::Medium => (base + dex.min(medium_cap), it.name.clone()),
                 _ => (base, it.name.clone()),
             }
         }
         None => {
             let mut best = (10 + dex, "Unarmored".to_string());
-            if has_class("Barbarian") && build.has_feature_named("Unarmored Defense") {
-                best = best.max((10 + dex + m(Ability::Con), "Unarmored Defense".into()));
-            }
-            if has_class("Monk") && build.has_feature_named("Unarmored Defense") && shield.is_none() {
-                best = best.max((10 + dex + m(Ability::Wis), "Unarmored Defense".into()));
-            }
-            if build.has_feature_named("Draconic Resilience") {
-                let v = if comp.classes.iter().any(|c| c.name == "Sorcerer" && !c.legacy && build.classes.iter().any(|b| b.key == c.key)) {
-                    10 + dex + m(Ability::Cha)
-                } else {
-                    13 + dex
-                };
-                best = best.max((v, "Draconic Resilience".into()));
+            for g in &build.grants {
+                if let Grant::NaturalArmor { base, abilities, shield: shield_ok } = &g.grant {
+                    if shield.is_some() && !shield_ok {
+                        continue;
+                    }
+                    let v = *base as i32 + abilities.iter().map(|a| m(*a)).sum::<i32>();
+                    if v > best.0 {
+                        best = (v, g.origin.clone());
+                    }
+                }
             }
             best
         }
@@ -246,6 +256,22 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
     if worn_armor.is_some() && build.has_feat_named("Defense") {
         ac += 1;
         ac_note.push_str(" + Defense");
+    }
+    let heavy_worn = worn.is_some_and(|(_, a)| a.kind == ArmorKind::Heavy);
+    for g in &build.grants {
+        if let Grant::AcBonus { amount, when } = g.grant {
+            let applies = match when {
+                AcWhen::Always => true,
+                AcWhen::Armored => worn.is_some(),
+                AcWhen::HeavyArmor => heavy_worn,
+                AcWhen::NotHeavyArmor => !heavy_worn,
+                AcWhen::Unarmored => worn.is_none(),
+            };
+            if applies {
+                ac += amount as i32;
+                ac_note.push_str(&format!(" + {}", g.origin));
+            }
+        }
     }
 
     // Hit points.
@@ -271,6 +297,14 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         })
         .sum();
     hp += per_level * level as i32;
+    hp += build
+        .grants
+        .iter()
+        .filter_map(|g| match g.grant {
+            Grant::HpBonus(n) => Some(n),
+            _ => None,
+        })
+        .sum::<i32>();
     let mut dice: BTreeMap<u8, u8> = BTreeMap::new();
     for l in &ch.levels {
         let hd = comp.classes.get(&l.class).map(|c| c.hit_die).unwrap_or(8);
@@ -280,10 +314,18 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
 
     // Speed bonuses.
     let heavy = worn_armor.and_then(|a| a.armor.as_ref()).is_some_and(|a| a.kind == ArmorKind::Heavy);
-    if has_class("Barbarian") && build.has_feature_named("Fast Movement") && !heavy {
+    if build.has_feature_named("Fast Movement") && !heavy {
         speed.walk += 10;
     }
-    if let Some(monk) = build.classes.iter().find(|c| comp.classes.get(&c.key).is_some_and(|x| x.name == "Monk")) {
+    // 2024 Ranger Roving: +10 out of heavy armor; climb and swim equal to speed.
+    if build.has_feature_named("Roving") && build.classes.iter().any(|c| comp.classes.get(&c.key).is_some_and(|x| !x.legacy)) {
+        if !heavy {
+            speed.walk += 10;
+        }
+        speed.climb = speed.climb.max(speed.walk);
+        speed.swim = speed.swim.max(speed.walk);
+    }
+    if let Some(monk) = build.classes.iter().find(|c| comp.classes.get(&c.key).is_some_and(|x| x.features.iter().any(|f| f.name == "Unarmored Movement"))) {
         if build.has_feature_named("Unarmored Movement") && worn_armor.is_none() && shield.is_none() {
             speed.walk += match monk.level {
                 0..=5 => 10,
@@ -292,6 +334,33 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
                 14..=17 => 25,
                 _ => 30,
             };
+        }
+    }
+
+    // Speed grants: bonuses first, then speeds equal to (or set to) a value.
+    for g in &build.grants {
+        if let Grant::SpeedBonus { mode, amount } = &g.grant {
+            match mode.as_str() {
+                "walk" => speed.walk += amount,
+                "fly" => speed.fly += amount,
+                "swim" => speed.swim += amount,
+                "climb" => speed.climb += amount,
+                "burrow" => speed.burrow += amount,
+                _ => {}
+            }
+        }
+    }
+    for g in &build.grants {
+        if let Grant::SpeedSet { mode, amount } = &g.grant {
+            let v = amount.unwrap_or(speed.walk);
+            let slot = match mode.as_str() {
+                "fly" => &mut speed.fly,
+                "swim" => &mut speed.swim,
+                "climb" => &mut speed.climb,
+                "burrow" => &mut speed.burrow,
+                _ => continue,
+            };
+            *slot = (*slot).max(v);
         }
     }
 

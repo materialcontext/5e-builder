@@ -23,9 +23,26 @@ pub enum Grant {
     Immune(String),
     CondImmune(String),
     Darkvision(u16),
+    /// Darkvision of `base` feet, or +`bonus` feet if the character already has darkvision.
+    DarkvisionBonus { base: u16, bonus: u16 },
     /// Blindsight, truesight, tremorsense (darkvision uses [`Grant::Darkvision`]).
     Sense { sense: String, range: u16 },
     Vulnerable(String),
+    /// Adds to a speed (`walk`, `fly`, `swim`, `climb`, `burrow`).
+    SpeedBonus { mode: String, amount: u16 },
+    /// Grants a speed: `amount` feet, or equal to the walking speed when `None`.
+    SpeedSet { mode: String, amount: Option<u16> },
+    /// Extra hit points per level of the owning class (Draconic Resilience).
+    HpPerClassLevel(i8),
+    /// Flat hit point maximum bonus (resolved from per-class-level grants).
+    HpBonus(i32),
+    /// Expertise with a tool (thieves' tools for 2014 rogues).
+    ToolExpertise(String),
+    /// An unarmored AC formula: `base` + the listed ability modifiers
+    /// (Unarmored Defense, natural armor). `shield`: usable with a shield.
+    NaturalArmor { base: u8, abilities: Vec<Ability>, shield: bool },
+    /// A flat AC bonus under a condition.
+    AcBonus { amount: i8, when: AcWhen },
     /// Extra hit points per character level (Tough, Dwarven Toughness).
     HpPerLevel(i8),
     Feature(Feature),
@@ -36,6 +53,17 @@ pub enum Grant {
     /// Grants that only apply once the scope's level (class level for class
     /// content, character level otherwise) reaches `level`.
     AtLevel { level: u8, grants: Vec<Grant> },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AcWhen {
+    Always,
+    /// Wearing any armor.
+    Armored,
+    HeavyArmor,
+    /// Not wearing heavy armor.
+    NotHeavyArmor,
+    Unarmored,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -105,6 +133,8 @@ pub enum Options {
     ExpertiseFrom(Vec<Skill>),
     /// Saving throw proficiencies.
     Saves(Vec<Ability>),
+    /// Expertise with one of these tools (must be proficient).
+    ToolExpertise(Vec<String>),
     Tools(Vec<String>),
     AnyTool,
     AnyArtisanTool,
@@ -241,6 +271,7 @@ impl Options {
             Options::Skills(_) | Options::AnySkill => "skill".into(),
             Options::SkillExpertise | Options::ExpertiseFrom(_) => "skill expertise".into(),
             Options::Saves(_) => "saving throw".into(),
+            Options::ToolExpertise(_) => "tool expertise".into(),
             Options::Tools(_) | Options::AnyTool => "tool".into(),
             Options::AnyArtisanTool => "artisan's tool".into(),
             Options::AnyInstrument => "musical instrument".into(),
@@ -292,8 +323,20 @@ fn describe_one(g: &Grant) -> Option<String> {
         Grant::Immune(d) => format!("{} immunity", title_case(d)),
         Grant::CondImmune(d) => format!("Immune to {d}"),
         Grant::Darkvision(r) => format!("Darkvision {r} ft."),
+        Grant::DarkvisionBonus { base, bonus } => format!("Darkvision {base} ft. (or +{bonus} ft.)"),
         Grant::Sense { sense, range } => format!("{} {range} ft.", title_case(sense)),
         Grant::Vulnerable(d) => format!("{} vulnerability", title_case(d)),
+        Grant::SpeedBonus { mode, amount } => format!("{} speed +{amount} ft.", title_case(mode)),
+        Grant::SpeedSet { mode, amount: Some(a) } => format!("{} speed {a} ft.", title_case(mode)),
+        Grant::SpeedSet { mode, amount: None } => format!("{} speed equal to walking speed", title_case(mode)),
+        Grant::HpPerClassLevel(n) => format!("+{n} HP per class level"),
+        Grant::HpBonus(n) => format!("+{n} HP"),
+        Grant::ToolExpertise(t) => format!("Expertise: {}", title_case(t)),
+        Grant::NaturalArmor { base, abilities, .. } => {
+            let mods: Vec<&str> = abilities.iter().map(|a| a.abbr()).collect();
+            if mods.is_empty() { format!("Natural AC {base}") } else { format!("Unarmored AC {base} + {}", mods.join(" + ")) }
+        }
+        Grant::AcBonus { amount, .. } => format!("AC +{amount}"),
         Grant::HpPerLevel(n) => format!("+{n} HP per level"),
         Grant::Feature(f) => f.name.clone(),
         Grant::Item { item, qty } => {

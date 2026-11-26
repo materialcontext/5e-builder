@@ -533,6 +533,10 @@ impl<'a> Walker<'a> {
                 Grant::Feat(k) => self.feat(k, &ctx.child(&format!("feat:{k}"))),
                 Grant::Spells(group) => self.spell_group(group, &ctx.child(&format!("g{i}"))),
                 Grant::Feature(f) => self.feature(f.clone(), ctx),
+                Grant::HpPerClassLevel(n) => {
+                    let hp = Grant::HpBonus(*n as i32 * ctx.level as i32);
+                    self.out.grants.push(Granted { grant: hp, origin: ctx.origin.clone() });
+                }
                 other => self.out.grants.push(Granted { grant: other.clone(), origin: ctx.origin.clone() }),
             }
         }
@@ -654,6 +658,13 @@ impl<'a> Walker<'a> {
                 picked.iter().for_each(|v| self.push(Grant::Item { item: ItemRef::Key(Key(v.clone())), qty: 1 }, ctx))
             }
             Options::WeaponMastery => picked.iter().for_each(|v| self.push(Grant::Feature(mastery_feature(self.comp, v)), ctx)),
+            Options::ToolExpertise(_) => {
+                for v in picked {
+                    if let Some(Prof::Tool(t)) = decode_prof(v) {
+                        self.push(Grant::ToolExpertise(t), ctx);
+                    }
+                }
+            }
             Options::SkillExpertise | Options::ExpertiseFrom(_) => {
                 for v in picked {
                     if let Some(s) = decode_prof(v).and_then(|p| match p {

@@ -47,7 +47,12 @@ pub fn common_grants(o: &Obj, id: &str) -> Vec<Grant> {
     out.extend(alternatives(o.get("savingThrowProficiencies"), &format!("{id}.saves"), "Saving throw", g::saves));
     out.extend(g::damage_list(o.get("vulnerable"), &format!("{id}.vuln"), Grant::Vulnerable));
     out.extend(g::senses(o.get("senses")));
-    out.extend(g::senses(o.get("bonusSenses")));
+    for gr in g::senses(o.get("bonusSenses")) {
+        out.push(match gr {
+            Grant::Darkvision(r) => Grant::DarkvisionBonus { base: r, bonus: r },
+            other => other,
+        });
+    }
     if let Some(r) = o.get("blindsight").and_then(Value::as_u64) {
         out.push(Grant::Sense { sense: "blindsight".into(), range: r as u16 });
     }
@@ -227,8 +232,15 @@ pub fn backgrounds(data: &Value) -> Vec<Background> {
             grants.extend(g::equipment(o.get("startingEquipment"), "background.equipment"));
             let features = text::features(o.get("entries"), &refs, "Background")
                 .into_iter()
-                .filter(|f| f.name.starts_with("Feature"))
-                .map(|f| Feature { name: f.name.trim_start_matches("Feature:").trim().to_string(), body: f.body })
+                .filter(|f| f.name.contains("Feature:") || f.name.starts_with("Feature"))
+                .map(|f| {
+                    let name = match f.name.split_once("Feature:") {
+                        Some((prefix, rest)) if prefix.trim().is_empty() => rest.trim().to_string(),
+                        Some((prefix, rest)) => format!("{} ({})", rest.trim(), prefix.trim()),
+                        None => f.name.clone(),
+                    };
+                    Feature { name, body: f.body }
+                })
                 .collect();
             Background {
                 key: Key::new(s(o, "name"), s(o, "source")),
@@ -273,12 +285,20 @@ pub fn feats(data: &Value) -> Vec<Feat> {
     let mut out = Vec::new();
     for v in inherit::resolve_copies(list, |o| ident(o, &["name", "source"])) {
         let Some(o) = v.as_object() else { continue };
-        let base = feat_record(o, None);
-        for ver in inherit::versions(&v) {
-            if let Some(vo) = ver.as_object() {
-                out.push(feat_record(vo, Some(base.key.clone())));
-            }
+        let mut base = feat_record(o, None);
+        let versions: Vec<Feat> =
+            inherit::versions(&v).iter().filter_map(Value::as_object).map(|vo| feat_record(vo, Some(base.key.clone()))).collect();
+        // Versions are hidden from feat pickers, so the base feat must offer them
+        // unless it already has its own alternatives (e.g. Magic Initiate's lists).
+        let has_alternatives = base.grants.iter().any(|g| matches!(g, Grant::Choose(c) if matches!(c.options, Options::Bundles(_))));
+        if !versions.is_empty() && !has_alternatives {
+            let bundles = versions
+                .iter()
+                .map(|f| Bundle { name: f.name.rsplit("; ").next().unwrap_or(&f.name).to_string(), grants: vec![Grant::Feat(f.key.clone())] })
+                .collect();
+            base.grants.push(choose("feat.version", "Option", 1, Options::Bundles(bundles)));
         }
+        out.extend(versions);
         out.push(base);
     }
     out
@@ -488,7 +508,9 @@ fn feature_record(f: &Obj, level: u8, subclass_slot: bool, ctx: &FeatureCtx, pat
     let name = s(f, "name").to_string();
     let entries = f.get("entries").cloned().unwrap_or(Value::Null);
     let mut grants = Vec::new();
+    let auto = f.get("_noNameGrants").and_then(Value::as_bool) != Some(true);
     match name.as_str() {
+        _ if !auto => {}
         "Ability Score Improvement" => {
             let mut cats = vec!["G".to_string()];
             if ctx.legacy_class {

@@ -1,152 +1,3695 @@
 {
-  "_comment": "Structured data for mechanics that 5etools only describes in prose. Each patch merges `set` (5etools field format) into every raw record whose fields equal `match`. `_grants` takes compendium grants verbatim. The importer warns about patches that match nothing.",
-  "classFeature": [
-    { "match": { "name": "Protector", "className": "Cleric", "classSource": "XPHB" },
-      "set": { "weaponProficiencies": [{ "martial": true }], "armorProficiencies": [{ "heavy": true }] } },
-    { "match": { "name": "Thaumaturge", "className": "Cleric", "classSource": "XPHB" },
-      "set": { "additionalSpells": [{ "known": { "_": [{ "choose": "level=0|class=Cleric" }] } }] } },
-    { "match": { "name": "Magician", "className": "Druid", "classSource": "XPHB" },
-      "set": { "additionalSpells": [{ "known": { "_": [{ "choose": "level=0|class=Druid" }] } }] } },
-    { "match": { "name": "Warden", "className": "Druid", "classSource": "XPHB" },
-      "set": { "weaponProficiencies": [{ "martial": true }], "armorProficiencies": [{ "medium": true }] } },
-    { "match": { "name": "Thieves' Cant", "className": "Rogue", "classSource": "XPHB" },
-      "set": { "languageProficiencies": [{ "thieves' cant": true, "any": 1 }] } },
-    { "match": { "name": "Thieves' Cant", "className": "Rogue", "classSource": "PHB" },
-      "set": { "languageProficiencies": [{ "thieves' cant": true }] } },
-    { "match": { "name": "Slippery Mind", "className": "Rogue", "classSource": "XPHB" },
-      "set": { "savingThrowProficiencies": [{ "wis": true, "cha": true }] } },
-    { "match": { "name": "Slippery Mind", "className": "Rogue", "classSource": "PHB" },
-      "set": { "savingThrowProficiencies": [{ "wis": true }] } },
-    { "match": { "name": "Scholar", "className": "Wizard", "classSource": "XPHB" },
-      "set": { "expertise": [{ "choose": { "from": ["arcana", "history", "investigation", "medicine", "nature", "religion"], "count": 1 } }] } },
-    { "match": { "name": "Signature Spells", "className": "Wizard" },
-      "set": { "additionalSpells": [{ "prepared": { "_": [{ "choose": "level=3|class=Wizard", "count": 2 }] } }] } },
-    { "match": { "name": "Spell Mastery", "className": "Wizard" },
-      "set": { "additionalSpells": [{ "prepared": { "_": [{ "choose": "level=1|class=Wizard" }, { "choose": "level=2|class=Wizard" }] } }] } },
-    { "match": { "name": "Deft Explorer", "className": "Ranger", "classSource": "XPHB" },
-      "set": { "expertise": [{ "anyProficientSkill": 1 }], "languageProficiencies": [{ "any": 2 }] } },
-    { "match": { "name": "Deft Explorer", "className": "Ranger", "classSource": "PHB" },
-      "set": { "expertise": [{ "anyProficientSkill": 1 }], "languageProficiencies": [{ "any": 2 }] } },
-    { "match": { "name": "Favored Enemy", "className": "Ranger", "classSource": "PHB" },
-      "set": { "languageProficiencies": [{ "any": 1 }] } },
-    { "match": { "name": "Favored Enemy and Natural Explorer improvements", "className": "Ranger", "classSource": "PHB" },
-      "set": { "languageProficiencies": [{ "any": 1 }] } },
-    { "match": { "name": "Favored Enemy improvement", "className": "Ranger", "classSource": "PHB" },
-      "set": { "languageProficiencies": [{ "any": 1 }] } },
-    { "match": { "name": "Primal Knowledge", "className": "Barbarian" },
-      "set": { "skillProficiencies": [{ "choose": { "from": ["animal handling", "athletics", "intimidation", "nature", "perception", "survival"] } }] } },
-    { "match": { "name": "Magical Secrets", "className": "Bard", "classSource": "PHB", "level": 10 },
-      "set": { "additionalSpells": [{ "known": { "_": [{ "choose": "level=0;1;2;3;4;5", "count": 2 }] } }] } },
-    { "match": { "name": "Magical Secrets", "className": "Bard", "classSource": "PHB", "level": 14 },
-      "set": { "additionalSpells": [{ "known": { "_": [{ "choose": "level=0;1;2;3;4;5;6;7", "count": 2 }] } }] } },
-    { "match": { "name": "Magical Secrets", "className": "Bard", "classSource": "PHB", "level": 18 },
-      "set": { "additionalSpells": [{ "known": { "_": [{ "choose": "level=0;1;2;3;4;5;6;7;8;9", "count": 2 }] } }] } },
-    { "match": { "name": "Tool Expertise", "className": "Artificer" },
-      "set": { "_grants": [{ "Feature": { "name": "Tool Expertise", "body": [{ "P": "Your proficiency bonus is doubled for any ability check that uses your proficiency with a tool." }] } }] } }
-  ],
-  "subclassFeature": [
-    { "match": { "name": "Bonus Proficiencies", "className": "Bard", "subclassShortName": "Lore", "subclassSource": "PHB" },
-      "set": { "skillProficiencies": [{ "any": 3 }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Bard", "subclassShortName": "Lore", "subclassSource": "XPHB" },
-      "set": { "skillProficiencies": [{ "any": 3 }] } },
-    { "match": { "name": "Additional Magical Secrets", "className": "Bard", "subclassShortName": "Lore" },
-      "set": { "additionalSpells": [{ "known": { "_": [{ "choose": "level=0;1;2;3", "count": 2 }] } }] } },
-    { "match": { "name": "Magical Discoveries", "className": "Bard", "subclassShortName": "Lore" },
-      "set": { "additionalSpells": [{ "prepared": { "_": [{ "choose": "level=0;1;2;3|class=Cleric;Druid;Wizard", "count": 2 }] } }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Bard", "subclassShortName": "Valor" },
-      "set": { "armorProficiencies": [{ "medium": true, "shield": true }], "weaponProficiencies": [{ "martial": true }] } },
-    { "match": { "name": "Martial Training", "className": "Bard", "subclassShortName": "Valor" },
-      "set": { "armorProficiencies": [{ "medium": true, "shield": true }], "weaponProficiencies": [{ "martial": true }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Bard", "subclassShortName": "Swords" },
-      "set": { "armorProficiencies": [{ "medium": true }], "weaponProficiencies": [{ "scimitar|phb": true }] } },
-    { "match": { "name": "Fighting Style", "className": "Bard", "subclassShortName": "Swords" },
-      "set": { "_grants": [{ "Choose": { "id": "style", "label": "Fighting Style", "count": { "Fixed": 1 }, "options": { "Bundles": [
-        { "name": "Dueling", "grants": [{ "Feature": { "name": "Fighting Style: Dueling", "body": [{ "P": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon." }] } }] },
-        { "name": "Two-Weapon Fighting", "grants": [{ "Feature": { "name": "Fighting Style: Two-Weapon Fighting", "body": [{ "P": "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack." }] } }] }
-      ] } } }] } },
-    { "match": { "name": "Bonus Proficiency", "className": "Cleric", "subclassShortName": "Life", "subclassSource": "PHB" },
-      "set": { "armorProficiencies": [{ "heavy": true }] } },
-    { "match": { "name": "Bonus Proficiency", "className": "Cleric", "subclassShortName": "Nature", "subclassSource": "PHB" },
-      "set": { "armorProficiencies": [{ "heavy": true }] } },
-    { "match": { "name": "Acolyte of Nature", "className": "Cleric", "subclassShortName": "Nature", "subclassSource": "PHB" },
-      "set": { "skillProficiencies": [{ "choose": { "from": ["animal handling", "nature", "survival"] } }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Cleric", "subclassShortName": "Tempest", "subclassSource": "PHB" },
-      "set": { "armorProficiencies": [{ "heavy": true }], "weaponProficiencies": [{ "martial": true }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Cleric", "subclassShortName": "War", "subclassSource": "PHB" },
-      "set": { "armorProficiencies": [{ "heavy": true }], "weaponProficiencies": [{ "martial": true }] } },
-    { "match": { "name": "Blessings of Knowledge", "className": "Cleric", "subclassShortName": "Knowledge", "subclassSource": "PHB" },
-      "set": { "languageProficiencies": [{ "any": 2 }],
-               "skillProficiencies": [{ "choose": { "from": ["arcana", "history", "nature", "religion"], "count": 2 } }],
-               "expertise": [{ "choose": { "from": ["arcana", "history", "nature", "religion"], "count": 2 } }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Cleric", "subclassShortName": "Order" },
-      "set": { "armorProficiencies": [{ "heavy": true }], "skillProficiencies": [{ "choose": { "from": ["intimidation", "persuasion"] } }] } },
-    { "match": { "name": "Implement of Peace", "className": "Cleric", "subclassShortName": "Peace" },
-      "set": { "skillProficiencies": [{ "choose": { "from": ["insight", "performance", "persuasion"] } }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Cleric", "subclassShortName": "Twilight" },
-      "set": { "armorProficiencies": [{ "heavy": true }], "weaponProficiencies": [{ "martial": true }] } },
-    { "match": { "name": "Bonus Proficiency", "className": "Cleric", "subclassShortName": "Forge" },
-      "set": { "armorProficiencies": [{ "heavy": true }], "toolProficiencies": [{ "smith's tools": true }] } },
-    { "match": { "name": "Hex Warrior", "className": "Warlock", "subclassShortName": "Hexblade" },
-      "set": { "armorProficiencies": [{ "medium": true, "shield": true }], "weaponProficiencies": [{ "martial": true }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Rogue", "subclassShortName": "Assassin", "subclassSource": "PHB" },
-      "set": { "toolProficiencies": [{ "disguise kit": true, "poisoner's kit": true }] } },
-    { "match": { "name": "Assassin's Tools", "className": "Rogue", "subclassShortName": "Assassin", "subclassSource": "XPHB" },
-      "set": { "toolProficiencies": [{ "disguise kit": true, "poisoner's kit": true }] } },
-    { "match": { "name": "Master of Intrigue", "className": "Rogue", "subclassShortName": "Mastermind" },
-      "set": { "toolProficiencies": [{ "disguise kit": true, "forgery kit": true, "anyGamingSet": 1 }], "languageProficiencies": [{ "any": 2 }] } },
-    { "match": { "name": "Survivalist", "className": "Rogue", "subclassShortName": "Scout" },
-      "set": { "skillProficiencies": [{ "nature": true, "survival": true }], "expertise": [{ "nature": true, "survival": true }] } },
-    { "match": { "name": "Student of War", "className": "Fighter", "subclassShortName": "Battle Master", "subclassSource": "PHB" },
-      "set": { "toolProficiencies": [{ "anyArtisansTool": 1 }] } },
-    { "match": { "name": "Student of War", "className": "Fighter", "subclassShortName": "Battle Master", "subclassSource": "XPHB" },
-      "set": { "toolProficiencies": [{ "anyArtisansTool": 1 }],
-               "skillProficiencies": [{ "choose": { "from": ["acrobatics", "animal handling", "athletics", "history", "insight", "intimidation", "persuasion", "perception", "survival"] } }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Fighter", "subclassShortName": "Rune Knight" },
-      "set": { "toolProficiencies": [{ "smith's tools": true }], "languageProficiencies": [{ "giant": true }] } },
-    { "match": { "name": "Arcane Archer Lore", "className": "Fighter", "subclassShortName": "Arcane Archer" },
-      "set": { "skillProficiencies": [{ "choose": { "from": ["arcana", "nature"] } }] } },
-    { "match": { "name": "Bonus Proficiency", "className": "Fighter", "subclassShortName": "Cavalier" },
-      "set": { "_grants": [{ "Choose": { "id": "bonus", "label": "Bonus proficiency", "count": { "Fixed": 1 }, "options": { "Mixed": [
-        { "Skills": ["AnimalHandling", "History", "Insight", "Performance", "Persuasion"] }, "AnyLanguage" ] } } }] } },
-    { "match": { "name": "Bonus Proficiency", "className": "Fighter", "subclassShortName": "Samurai" },
-      "set": { "_grants": [{ "Choose": { "id": "bonus", "label": "Bonus proficiency", "count": { "Fixed": 1 }, "options": { "Mixed": [
-        { "Skills": ["History", "Insight", "Performance", "Persuasion"] }, "AnyLanguage" ] } } }] } },
-    { "match": { "name": "Elegant Courtier", "className": "Fighter", "subclassShortName": "Samurai" },
-      "set": { "savingThrowProficiencies": [{ "wis": true }] } },
-    { "match": { "name": "Bonus Proficiencies", "className": "Monk", "subclassShortName": "Drunken Master" },
-      "set": { "skillProficiencies": [{ "performance": true }], "toolProficiencies": [{ "brewer's supplies": true }] } },
-    { "match": { "name": "Implements of Mercy", "className": "Monk", "subclassShortName": "Mercy" },
-      "set": { "skillProficiencies": [{ "insight": true, "medicine": true }], "toolProficiencies": [{ "herbalism kit": true }] } },
-    { "match": { "name": "Iron Mind", "className": "Ranger", "subclassShortName": "Gloom Stalker" },
-      "set": { "savingThrowProficiencies": [{ "wis": true }] } },
-    { "match": { "name": "Otherworldly Glamour", "className": "Ranger", "subclassShortName": "Fey Wanderer" },
-      "set": { "skillProficiencies": [{ "choose": { "from": ["deception", "performance", "persuasion"] } }] } },
-    { "match": { "name": "Elemental Affinity", "className": "Sorcerer", "subclassShortName": "Draconic", "subclassSource": "XPHB" },
-      "set": { "resist": [{ "choose": { "from": ["acid", "cold", "fire", "lightning", "poison"] } }] } },
-    { "match": { "name": "Training in War and Song (Bladesinging)", "className": "Wizard", "subclassShortName": "Bladesinging" },
-      "set": { "armorProficiencies": [{ "light": true }], "skillProficiencies": [{ "performance": true }] } },
-    { "match": { "name": "Improved Illusions", "className": "Wizard", "subclassShortName": "Illusionist" },
-      "set": { "additionalSpells": [{ "known": { "_": ["minor illusion|xphb#c"] } }] } },
-    { "match": { "name": "Tool Proficiency", "className": "Artificer", "subclassShortName": "Alchemist" },
-      "set": { "toolProficiencies": [{ "alchemist's supplies": true }] } },
-    { "match": { "name": "Tool Proficiency", "className": "Artificer", "subclassShortName": "Artillerist" },
-      "set": { "toolProficiencies": [{ "woodcarver's tools": true }] } },
-    { "match": { "name": "Tool Proficiency", "className": "Artificer", "subclassShortName": "Battle Smith" },
-      "set": { "toolProficiencies": [{ "smith's tools": true }] } },
-    { "match": { "name": "Battle Ready", "className": "Artificer", "subclassShortName": "Battle Smith" },
-      "set": { "weaponProficiencies": [{ "martial": true }] } },
-    { "match": { "name": "Tools of the Trade", "className": "Artificer", "subclassShortName": "Armorer" },
-      "set": { "armorProficiencies": [{ "heavy": true }], "toolProficiencies": [{ "smith's tools": true }] } }
-  ],
-  "race": [
-    { "match": { "name": "Dhampir", "source": "VRGR" },
-      "set": { "skillProficiencies": [{ "any": 2 }] } },
-    { "match": { "name": "Reborn", "source": "VRGR" },
-      "set": { "skillProficiencies": [{ "any": 2 }] } }
-  ],
-  "feat": [
-    {"match": {"name": "Rune Shaper", "source": "BGG"}, "set": {"additionalSpells": [{"ability": {"choose": ["int", "wis", "cha"]}, "innate": {"_": {"daily": {"1": ["comprehend languages"]}}}}], "_grants": [{"Choose": {"id": "runes", "label": "Runes known", "count": {"ByLevel": [1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3]}, "options": {"Bundles": [{"name": "Rune: Fog Cloud", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "fog cloud|phb"}}]}}]}, {"name": "Rune: Inflict Wounds", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "inflict wounds|phb"}}]}}]}, {"name": "Rune: Chromatic Orb", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "chromatic orb|phb"}}]}}]}, {"name": "Rune: Disguise Self", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "disguise self|phb"}}]}}]}, {"name": "Rune: Burning Hands", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "burning hands|phb"}}]}}]}, {"name": "Rune: Speak With Animals", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "speak with animals|phb"}}]}}]}, {"name": "Rune: Armor Of Agathys", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "armor of agathys|phb"}}]}}]}, {"name": "Rune: Goodberry", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "goodberry|phb"}}]}}]}, {"name": "Rune: Longstrider", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "longstrider|phb"}}]}}]}, {"name": "Rune: Command", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "command|phb"}}]}}]}, {"name": "Rune: Entangle", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "entangle|phb"}}]}}]}, {"name": "Rune: Sanctuary", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "sanctuary|phb"}}]}}]}, {"name": "Rune: Thunderwave", "grants": [{"Spells": {"name": null, "ability": "Inherit", "spells": [{"level": 0, "kind": {"Innate": "1/long rest"}, "pick": {"Fixed": "thunderwave|phb"}}]}}]}]}}}]}},
-    { "match": { "name": "Weapon Master", "source": "XPHB" },
-      "set": { "_grants": [{ "Choose": { "id": "mastery", "label": "Weapon Mastery", "count": { "Fixed": 1 }, "options": "WeaponMastery" } }] } }
-  ]
+ "_comment": "Structured data for mechanics that 5etools only describes in prose. Each patch merges `set` (5etools field format) into every raw record whose fields equal `match`. `_grants` takes compendium grants verbatim. The importer warns about patches that match nothing.",
+ "classFeature": [
+  {
+   "match": {
+    "name": "Protector",
+    "className": "Cleric",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ],
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Thaumaturge",
+    "className": "Cleric",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        {
+         "choose": "level=0|class=Cleric"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Magician",
+    "className": "Druid",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        {
+         "choose": "level=0|class=Druid"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Warden",
+    "className": "Druid",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ],
+    "armorProficiencies": [
+     {
+      "medium": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Thieves' Cant",
+    "className": "Rogue",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "thieves' cant": true,
+      "any": 1
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Thieves' Cant",
+    "className": "Rogue",
+    "classSource": "PHB"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "thieves' cant": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Slippery Mind",
+    "className": "Rogue",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "savingThrowProficiencies": [
+     {
+      "wis": true,
+      "cha": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Slippery Mind",
+    "className": "Rogue",
+    "classSource": "PHB"
+   },
+   "set": {
+    "savingThrowProficiencies": [
+     {
+      "wis": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Scholar",
+    "className": "Wizard",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "expertise": [
+     {
+      "choose": {
+       "from": [
+        "arcana",
+        "history",
+        "investigation",
+        "medicine",
+        "nature",
+        "religion"
+       ],
+       "count": 1
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Signature Spells",
+    "className": "Wizard"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "prepared": {
+       "_": [
+        {
+         "choose": "level=3|class=Wizard",
+         "count": 2
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Spell Mastery",
+    "className": "Wizard"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "prepared": {
+       "_": [
+        {
+         "choose": "level=1|class=Wizard"
+        },
+        {
+         "choose": "level=2|class=Wizard"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Deft Explorer",
+    "className": "Ranger",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "expertise": [
+     {
+      "anyProficientSkill": 1
+     }
+    ],
+    "languageProficiencies": [
+     {
+      "any": 2
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Deft Explorer",
+    "className": "Ranger",
+    "classSource": "PHB"
+   },
+   "set": {
+    "expertise": [
+     {
+      "anyProficientSkill": 1
+     }
+    ],
+    "languageProficiencies": [
+     {
+      "any": 2
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Favored Enemy",
+    "className": "Ranger",
+    "classSource": "PHB"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "any": 1
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Favored Enemy and Natural Explorer improvements",
+    "className": "Ranger",
+    "classSource": "PHB"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "any": 1
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Favored Enemy improvement",
+    "className": "Ranger",
+    "classSource": "PHB"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "any": 1
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Primal Knowledge",
+    "className": "Barbarian"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "animal handling",
+        "athletics",
+        "intimidation",
+        "nature",
+        "perception",
+        "survival"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Magical Secrets",
+    "className": "Bard",
+    "classSource": "PHB",
+    "level": 10
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        {
+         "choose": "level=0;1;2;3;4;5",
+         "count": 2
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Magical Secrets",
+    "className": "Bard",
+    "classSource": "PHB",
+    "level": 14
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        {
+         "choose": "level=0;1;2;3;4;5;6;7",
+         "count": 2
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Magical Secrets",
+    "className": "Bard",
+    "classSource": "PHB",
+    "level": 18
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        {
+         "choose": "level=0;1;2;3;4;5;6;7;8;9",
+         "count": 2
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tool Expertise",
+    "className": "Artificer"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Feature": {
+       "name": "Tool Expertise",
+       "body": [
+        {
+         "P": "Your proficiency bonus is doubled for any ability check that uses your proficiency with a tool."
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Deft Explorer Improvement",
+    "className": "Ranger",
+    "classSource": "PHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 5
+      }
+     },
+     {
+      "SpeedSet": {
+       "mode": "climb",
+       "amount": null
+      }
+     },
+     {
+      "SpeedSet": {
+       "mode": "swim",
+       "amount": null
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Feral Senses",
+    "className": "Ranger",
+    "classSource": "XPHB"
+   },
+   "set": {
+    "senses": [
+     {
+      "blindsight": 30
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Expertise",
+    "className": "Rogue",
+    "classSource": "PHB"
+   },
+   "set": {
+    "_noNameGrants": true,
+    "_grants": [
+     {
+      "Choose": {
+       "id": "expertise",
+       "label": "Expertise",
+       "count": {
+        "Fixed": 2
+       },
+       "options": {
+        "Mixed": [
+         "SkillExpertise",
+         {
+          "ToolExpertise": [
+           "thieves' tools"
+          ]
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Improved Spectral Sight",
+    "className": "Demon Hunter"
+   },
+   "set": {
+    "senses": [
+     {
+      "truesight": 30
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Deft Explorer",
+    "className": "Demon Hunter"
+   },
+   "set": {
+    "expertise": [
+     {
+      "anyProficientSkill": 1
+     }
+    ],
+    "languageProficiencies": [
+     {
+      "any": 2
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Unarmored Defense",
+    "className": "Barbarian"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 10,
+       "abilities": [
+        "dex",
+        "con"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Unarmored Defense",
+    "className": "Monk"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 10,
+       "abilities": [
+        "dex",
+        "wis"
+       ],
+       "shield": false
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Diamond Soul",
+    "className": "Monk"
+   },
+   "set": {
+    "savingThrowProficiencies": [
+     {
+      "str": true,
+      "dex": true,
+      "con": true,
+      "int": true,
+      "wis": true,
+      "cha": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Disciplined Survivor",
+    "className": "Monk"
+   },
+   "set": {
+    "savingThrowProficiencies": [
+     {
+      "str": true,
+      "dex": true,
+      "con": true,
+      "int": true,
+      "wis": true,
+      "cha": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Purity of Body",
+    "className": "Monk",
+    "classSource": "PHB"
+   },
+   "set": {
+    "immune": [
+     "poison"
+    ],
+    "conditionImmune": [
+     "poisoned",
+     "disease"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Divine Health",
+    "className": "Paladin"
+   },
+   "set": {
+    "conditionImmune": [
+     "disease"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Psionic Body",
+    "className": "Mystic"
+   },
+   "set": {
+    "resist": [
+     "bludgeoning",
+     "piercing",
+     "slashing"
+    ],
+    "immune": [
+     "poison"
+    ],
+    "conditionImmune": [
+     "poisoned",
+     "disease"
+    ]
+   }
+  }
+ ],
+ "subclassFeature": [
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Bard",
+    "subclassShortName": "Lore",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "any": 3
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Bard",
+    "subclassShortName": "Lore",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "any": 3
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Additional Magical Secrets",
+    "className": "Bard",
+    "subclassShortName": "Lore"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        {
+         "choose": "level=0;1;2;3",
+         "count": 2
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Magical Discoveries",
+    "className": "Bard",
+    "subclassShortName": "Lore"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "prepared": {
+       "_": [
+        {
+         "choose": "level=0;1;2;3|class=Cleric;Druid;Wizard",
+         "count": 2
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Bard",
+    "subclassShortName": "Valor"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "medium": true,
+      "shield": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Martial Training",
+    "className": "Bard",
+    "subclassShortName": "Valor"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "medium": true,
+      "shield": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Bard",
+    "subclassShortName": "Swords"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "medium": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "scimitar|phb": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Fighting Style",
+    "className": "Bard",
+    "subclassShortName": "Swords"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "style",
+       "label": "Fighting Style",
+       "count": {
+        "Fixed": 1
+       },
+       "options": {
+        "Bundles": [
+         {
+          "name": "Dueling",
+          "grants": [
+           {
+            "Feature": {
+             "name": "Fighting Style: Dueling",
+             "body": [
+              {
+               "P": "When you are wielding a melee weapon in one hand and no other weapons, you gain a +2 bonus to damage rolls with that weapon."
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Two-Weapon Fighting",
+          "grants": [
+           {
+            "Feature": {
+             "name": "Fighting Style: Two-Weapon Fighting",
+             "body": [
+              {
+               "P": "When you engage in two-weapon fighting, you can add your ability modifier to the damage of the second attack."
+              }
+             ]
+            }
+           }
+          ]
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Cleric",
+    "subclassShortName": "Life",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Cleric",
+    "subclassShortName": "Nature",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Acolyte of Nature",
+    "className": "Cleric",
+    "subclassShortName": "Nature",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "animal handling",
+        "nature",
+        "survival"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Cleric",
+    "subclassShortName": "Tempest",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Cleric",
+    "subclassShortName": "War",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Blessings of Knowledge",
+    "className": "Cleric",
+    "subclassShortName": "Knowledge",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "any": 2
+     }
+    ],
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "arcana",
+        "history",
+        "nature",
+        "religion"
+       ],
+       "count": 2
+      }
+     }
+    ],
+    "expertise": [
+     {
+      "choose": {
+       "from": [
+        "arcana",
+        "history",
+        "nature",
+        "religion"
+       ],
+       "count": 2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Cleric",
+    "subclassShortName": "Order"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ],
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "intimidation",
+        "persuasion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Implement of Peace",
+    "className": "Cleric",
+    "subclassShortName": "Peace"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "insight",
+        "performance",
+        "persuasion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Cleric",
+    "subclassShortName": "Twilight"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Cleric",
+    "subclassShortName": "Forge"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ],
+    "toolProficiencies": [
+     {
+      "smith's tools": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Hex Warrior",
+    "className": "Warlock",
+    "subclassShortName": "Hexblade"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "medium": true,
+      "shield": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Rogue",
+    "subclassShortName": "Assassin",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "disguise kit": true,
+      "poisoner's kit": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Assassin's Tools",
+    "className": "Rogue",
+    "subclassShortName": "Assassin",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "disguise kit": true,
+      "poisoner's kit": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Master of Intrigue",
+    "className": "Rogue",
+    "subclassShortName": "Mastermind"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "disguise kit": true,
+      "forgery kit": true,
+      "anyGamingSet": 1
+     }
+    ],
+    "languageProficiencies": [
+     {
+      "any": 2
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Survivalist",
+    "className": "Rogue",
+    "subclassShortName": "Scout"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "nature": true,
+      "survival": true
+     }
+    ],
+    "expertise": [
+     {
+      "nature": true,
+      "survival": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Student of War",
+    "className": "Fighter",
+    "subclassShortName": "Battle Master",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "anyArtisansTool": 1
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Student of War",
+    "className": "Fighter",
+    "subclassShortName": "Battle Master",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "anyArtisansTool": 1
+     }
+    ],
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "acrobatics",
+        "animal handling",
+        "athletics",
+        "history",
+        "insight",
+        "intimidation",
+        "persuasion",
+        "perception",
+        "survival"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Fighter",
+    "subclassShortName": "Rune Knight"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "smith's tools": true
+     }
+    ],
+    "languageProficiencies": [
+     {
+      "giant": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Arcane Archer Lore",
+    "className": "Fighter",
+    "subclassShortName": "Arcane Archer"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "arcana",
+        "nature"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Fighter",
+    "subclassShortName": "Cavalier"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "bonus",
+       "label": "Bonus proficiency",
+       "count": {
+        "Fixed": 1
+       },
+       "options": {
+        "Mixed": [
+         {
+          "Skills": [
+           "AnimalHandling",
+           "History",
+           "Insight",
+           "Performance",
+           "Persuasion"
+          ]
+         },
+         "AnyLanguage"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Fighter",
+    "subclassShortName": "Samurai"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "bonus",
+       "label": "Bonus proficiency",
+       "count": {
+        "Fixed": 1
+       },
+       "options": {
+        "Mixed": [
+         {
+          "Skills": [
+           "History",
+           "Insight",
+           "Performance",
+           "Persuasion"
+          ]
+         },
+         "AnyLanguage"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Elegant Courtier",
+    "className": "Fighter",
+    "subclassShortName": "Samurai"
+   },
+   "set": {
+    "savingThrowProficiencies": [
+     {
+      "wis": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Monk",
+    "subclassShortName": "Drunken Master"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "performance": true
+     }
+    ],
+    "toolProficiencies": [
+     {
+      "brewer's supplies": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Implements of Mercy",
+    "className": "Monk",
+    "subclassShortName": "Mercy"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "insight": true,
+      "medicine": true
+     }
+    ],
+    "toolProficiencies": [
+     {
+      "herbalism kit": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Iron Mind",
+    "className": "Ranger",
+    "subclassShortName": "Gloom Stalker"
+   },
+   "set": {
+    "savingThrowProficiencies": [
+     {
+      "wis": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Otherworldly Glamour",
+    "className": "Ranger",
+    "subclassShortName": "Fey Wanderer"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "deception",
+        "performance",
+        "persuasion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Elemental Affinity",
+    "className": "Sorcerer",
+    "subclassShortName": "Draconic",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "resist": [
+     {
+      "choose": {
+       "from": [
+        "acid",
+        "cold",
+        "fire",
+        "lightning",
+        "poison"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Training in War and Song (Bladesinging)",
+    "className": "Wizard",
+    "subclassShortName": "Bladesinging"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "light": true
+     }
+    ],
+    "skillProficiencies": [
+     {
+      "performance": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Improved Illusions",
+    "className": "Wizard",
+    "subclassShortName": "Illusionist"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        "minor illusion|xphb#c"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tool Proficiency",
+    "className": "Artificer",
+    "subclassShortName": "Alchemist"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "alchemist's supplies": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tool Proficiency",
+    "className": "Artificer",
+    "subclassShortName": "Artillerist"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "woodcarver's tools": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tool Proficiency",
+    "className": "Artificer",
+    "subclassShortName": "Battle Smith"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "smith's tools": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Battle Ready",
+    "className": "Artificer",
+    "subclassShortName": "Battle Smith"
+   },
+   "set": {
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tools of the Trade",
+    "className": "Artificer",
+    "subclassShortName": "Armorer"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ],
+    "toolProficiencies": [
+     {
+      "smith's tools": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Superior Mobility",
+    "className": "Rogue",
+    "subclassShortName": "Scout"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 10
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Aura of Alacrity",
+    "className": "Paladin",
+    "subclassShortName": "Glory"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 10
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Gift of the Sea",
+    "className": "Warlock",
+    "subclassShortName": "Fathomless"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedSet": {
+       "mode": "swim",
+       "amount": 40
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Aquatic Affinity",
+    "className": "Druid",
+    "subclassShortName": "Sea"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedSet": {
+       "mode": "swim",
+       "amount": null
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Eyes of the Dark",
+    "className": "Sorcerer",
+    "subclassShortName": "Shadow",
+    "subclassSource": "XGE"
+   },
+   "set": {
+    "senses": [
+     {
+      "darkvision": 120
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Power of Shadow",
+    "className": "Sorcerer",
+    "subclassShortName": "Shadow",
+    "subclassSource": "RHW"
+   },
+   "set": {
+    "senses": [
+     {
+      "darkvision": 120,
+      "blindsight": 10
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Ascendant Aspect",
+    "className": "Monk",
+    "subclassShortName": "Ascendant Dragon"
+   },
+   "set": {
+    "senses": [
+     {
+      "blindsight": 10
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Guarded Mind",
+    "className": "Fighter",
+    "subclassShortName": "Psi Warrior"
+   },
+   "set": {
+    "resist": [
+     "psychic"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Inured to Undeath",
+    "className": "Wizard",
+    "subclassShortName": "Necromancy"
+   },
+   "set": {
+    "resist": [
+     "necrotic"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Necrotic Husk",
+    "className": "Warlock",
+    "subclassShortName": "Undead"
+   },
+   "set": {
+    "resist": [
+     "necrotic"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Immortal Durability",
+    "className": "Mystic",
+    "subclassShortName": "Immortal"
+   },
+   "set": {
+    "_grants": [
+     {
+      "HpPerClassLevel": 1
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Chemical Mastery",
+    "className": "Artificer",
+    "subclassShortName": "Alchemist",
+    "subclassSource": "TCE"
+   },
+   "set": {
+    "resist": [
+     "acid",
+     "poison"
+    ],
+    "conditionImmune": [
+     "poisoned"
+    ],
+    "additionalSpells": [
+     {
+      "innate": {
+       "_": {
+        "daily": {
+         "1": [
+          "greater restoration",
+          "heal"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Chemical Mastery",
+    "className": "Artificer",
+    "subclassShortName": "Alchemist",
+    "subclassSource": "EFA"
+   },
+   "set": {
+    "resist": [
+     "acid",
+     "poison"
+    ],
+    "conditionImmune": [
+     "poisoned"
+    ],
+    "additionalSpells": [
+     {
+      "innate": {
+       "_": {
+        "daily": {
+         "1": [
+          "tasha's bubbling cauldron|xphb"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Restorative Reagents",
+    "className": "Artificer",
+    "subclassShortName": "Alchemist"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "innate": {
+       "_": {
+        "resource": {
+         "Int mod": [
+          "lesser restoration"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Fey Reinforcements",
+    "className": "Ranger",
+    "subclassShortName": "Fey Wanderer",
+    "subclassSource": "TCE"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "innate": {
+       "_": {
+        "daily": {
+         "1": [
+          "summon fey|tce"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Fey Reinforcements",
+    "className": "Ranger",
+    "subclassShortName": "Fey Wanderer",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "innate": {
+       "_": {
+        "daily": {
+         "1": [
+          "summon fey|xphb"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Ethereal Step",
+    "className": "Ranger",
+    "subclassShortName": "Horizon Walker"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "innate": {
+       "_": {
+        "rest": {
+         "1": [
+          "etherealness"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Shapechanger",
+    "className": "Wizard",
+    "subclassShortName": "Transmutation"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "known": {
+       "_": [
+        "polymorph"
+       ]
+      },
+      "innate": {
+       "_": {
+        "rest": {
+         "1": [
+          "polymorph"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Cleric",
+    "subclassShortName": "Death"
+   },
+   "set": {
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Arcane Initiate",
+    "className": "Cleric",
+    "subclassShortName": "Arcana",
+    "subclassSource": "SCAG"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "arcana": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Student of Arcana",
+    "className": "Cleric",
+    "subclassShortName": "Arcana",
+    "subclassSource": "AU"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "arcana",
+        "history",
+        "insight",
+        "medicine",
+        "persuasion",
+        "religion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Cleric",
+    "subclassShortName": "Solidarity (PSA)"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiency",
+    "className": "Cleric",
+    "subclassShortName": "Strength (PSA)"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Cleric",
+    "subclassShortName": "Zeal (PSA)"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "heavy": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Acolyte of Strength",
+    "className": "Cleric",
+    "subclassShortName": "Strength (PSA)"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "animal handling",
+        "athletics",
+        "nature",
+        "survival"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Blessings of Knowledge",
+    "className": "Cleric",
+    "subclassShortName": "Knowledge",
+    "subclassSource": "FRHoF"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "anyArtisansTool": 1
+     }
+    ],
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "arcana",
+        "history",
+        "nature",
+        "religion"
+       ],
+       "count": 2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Unfettered Mind",
+    "className": "Cleric",
+    "subclassShortName": "Knowledge",
+    "subclassSource": "FRHoF"
+   },
+   "set": {
+    "savingThrowProficiencies": [
+     {
+      "int": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Royal Envoy",
+    "className": "Fighter",
+    "subclassShortName": "Purple Dragon Knight (Banneret)"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "persuasion": true
+     }
+    ],
+    "expertise": [
+     {
+      "persuasion": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Knightly Envoy",
+    "className": "Fighter",
+    "subclassShortName": "Banneret",
+    "subclassSource": "FRHoF"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "any": 1
+     }
+    ],
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "insight",
+        "intimidation",
+        "performance",
+        "persuasion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Path of the Kensei",
+    "className": "Monk",
+    "subclassShortName": "Kensei"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "calligrapher's supplies",
+        "painter's supplies"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Draconic Disciple",
+    "className": "Monk",
+    "subclassShortName": "Ascendant Dragon"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "draconic": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Giant Power",
+    "className": "Barbarian",
+    "subclassShortName": "Giant"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "giant": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Draconic Gift",
+    "className": "Ranger",
+    "subclassShortName": "Drakewarden"
+   },
+   "set": {
+    "languageProficiencies": [
+     {
+      "draconic": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Bonus Proficiencies",
+    "className": "Monk",
+    "subclassShortName": "Mystic Brews"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "performance": true
+     }
+    ],
+    "toolProficiencies": [
+     {
+      "brewer's supplies": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Genie's Splendor",
+    "className": "Paladin",
+    "subclassShortName": "Noble Genies"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "acrobatics",
+        "intimidation",
+        "performance",
+        "persuasion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Training in War and Song",
+    "className": "Wizard",
+    "subclassShortName": "Bladesinger",
+    "subclassSource": "FRHoF"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "acrobatics",
+        "athletics",
+        "performance",
+        "persuasion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Enchanting Conversationalist",
+    "className": "Wizard",
+    "subclassShortName": "Enchanter",
+    "subclassSource": "AU"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "deception",
+        "intimidation",
+        "persuasion"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tools of the Trade",
+    "className": "Artificer",
+    "subclassShortName": "Alchemist",
+    "subclassSource": "EFA"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "alchemist's supplies": true,
+      "herbalism kit": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tools of the Trade",
+    "className": "Artificer",
+    "subclassShortName": "Artillerist",
+    "subclassSource": "EFA"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "woodcarver's tools": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial ranged weapons": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tools of the Trade",
+    "className": "Artificer",
+    "subclassShortName": "Battle Smith",
+    "subclassSource": "EFA"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "smith's tools": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tools of the Trade",
+    "className": "Artificer",
+    "subclassShortName": "Cartographer",
+    "subclassSource": "EFA"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "calligrapher's supplies": true,
+      "cartographer's tools": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Reanimator's Skill Set",
+    "className": "Artificer",
+    "subclassShortName": "Reanimator"
+   },
+   "set": {
+    "toolProficiencies": [
+     {
+      "alchemist's supplies": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Armor Training",
+    "className": "Mystic",
+    "subclassShortName": "Avatar"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "medium": true,
+      "shield": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Martial Training",
+    "className": "Mystic",
+    "subclassShortName": "Soul Knife"
+   },
+   "set": {
+    "armorProficiencies": [
+     {
+      "medium": true
+     }
+    ],
+    "weaponProficiencies": [
+     {
+      "martial": true
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Awakened Talent",
+    "className": "Mystic",
+    "subclassShortName": "Awakened"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "animal handling",
+        "deception",
+        "insight",
+        "intimidation",
+        "investigation",
+        "perception",
+        "persuasion"
+       ],
+       "count": 2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Hermit's Study",
+    "className": "Mystic",
+    "subclassShortName": "Wu Jen"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "choose": {
+       "from": [
+        "animal handling",
+        "arcana",
+        "history",
+        "insight",
+        "medicine",
+        "nature",
+        "perception",
+        "religion",
+        "survival"
+       ],
+       "count": 2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Spectral Sight",
+    "className": "Demon Hunter",
+    "subclassShortName": "Demon Hunter"
+   },
+   "set": {
+    "senses": [
+     {
+      "blindsight": 10
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Umbral Sight",
+    "className": "Ranger",
+    "subclassShortName": "Gloom Stalker",
+    "subclassSource": "XGE"
+   },
+   "set": {
+    "_grants": [
+     {
+      "DarkvisionBonus": {
+       "base": 60,
+       "bonus": 30
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Umbral Sight",
+    "className": "Ranger",
+    "subclassShortName": "Gloom Stalker",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "DarkvisionBonus": {
+       "base": 60,
+       "bonus": 60
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Darkvision",
+    "className": "Monk",
+    "subclassShortName": "Shadow",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "DarkvisionBonus": {
+       "base": 60,
+       "bonus": 60
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Aspect of the Wilds",
+    "className": "Barbarian",
+    "subclassShortName": "Wild Heart",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "aspect",
+       "label": "Aspect of the Wilds",
+       "count": {
+        "Fixed": 1
+       },
+       "options": {
+        "Bundles": [
+         {
+          "name": "Owl",
+          "grants": [
+           {
+            "DarkvisionBonus": {
+             "base": 60,
+             "bonus": 60
+            }
+           }
+          ]
+         },
+         {
+          "name": "Panther",
+          "grants": [
+           {
+            "SpeedSet": {
+             "mode": "climb",
+             "amount": null
+            }
+           }
+          ]
+         },
+         {
+          "name": "Salmon",
+          "grants": [
+           {
+            "SpeedSet": {
+             "mode": "swim",
+             "amount": null
+            }
+           }
+          ]
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Superior Atlas",
+    "className": "Artificer",
+    "subclassShortName": "Cartographer"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "innate": {
+       "_": {
+        "daily": {
+         "1": [
+          "find the path|xphb"
+         ]
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Psychic Defenses",
+    "className": "Sorcerer",
+    "subclassShortName": "Aberrant Mind"
+   },
+   "set": {
+    "resist": [
+     "psychic"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Psychic Defenses",
+    "className": "Sorcerer",
+    "subclassShortName": "Aberrant"
+   },
+   "set": {
+    "resist": [
+     "psychic"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Oceanic Soul",
+    "className": "Warlock",
+    "subclassShortName": "Fathomless"
+   },
+   "set": {
+    "resist": [
+     "cold"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Heart of the Storm",
+    "className": "Sorcerer",
+    "subclassShortName": "Storm"
+   },
+   "set": {
+    "resist": [
+     "lightning",
+     "thunder"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Fire in the Veins",
+    "className": "Sorcerer",
+    "subclassShortName": "Pyromancer (PSK)"
+   },
+   "set": {
+    "resist": [
+     "fire"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Avatar of Battle",
+    "className": "Cleric",
+    "subclassShortName": "War",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "resist": [
+     "bludgeoning (nonmagical)",
+     "piercing (nonmagical)",
+     "slashing (nonmagical)"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Avatar of Battle",
+    "className": "Cleric",
+    "subclassShortName": "Strength (PSA)"
+   },
+   "set": {
+    "resist": [
+     "bludgeoning (nonmagical)",
+     "piercing (nonmagical)",
+     "slashing (nonmagical)"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Avatar of Battle",
+    "className": "Cleric",
+    "subclassShortName": "War",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "resist": [
+     "bludgeoning",
+     "piercing",
+     "slashing"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Unarmored Defense",
+    "className": "Bard",
+    "subclassShortName": "Dance"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 10,
+       "abilities": [
+        "dex",
+        "cha"
+       ],
+       "shield": false
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Draconic Resilience",
+    "className": "Sorcerer",
+    "subclassShortName": "Draconic",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "HpPerClassLevel": 1
+     },
+     {
+      "NaturalArmor": {
+       "base": 13,
+       "abilities": [
+        "dex"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Draconic Resilience",
+    "className": "Sorcerer",
+    "subclassShortName": "Draconic",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "HpPerClassLevel": 1
+     },
+     {
+      "NaturalArmor": {
+       "base": 10,
+       "abilities": [
+        "dex",
+        "cha"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Soul of the Forge",
+    "className": "Cleric",
+    "subclassShortName": "Forge"
+   },
+   "set": {
+    "resist": [
+     "fire"
+    ],
+    "_grants": [
+     {
+      "AcBonus": {
+       "amount": 1,
+       "when": "HeavyArmor"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Nature's Ward",
+    "className": "Druid",
+    "subclassShortName": "Land",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "conditionImmune": [
+     "poisoned"
+    ],
+    "resist": [
+     {
+      "choose": {
+       "from": [
+        "cold",
+        "fire",
+        "lightning",
+        "poison"
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Beguiling Defenses",
+    "className": "Warlock",
+    "subclassShortName": "Archfey",
+    "subclassSource": "XPHB"
+   },
+   "set": {
+    "conditionImmune": [
+     "charmed"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Inspiring Commander",
+    "className": "Fighter",
+    "subclassShortName": "Banneret",
+    "subclassSource": "FRHoF"
+   },
+   "set": {
+    "conditionImmune": [
+     "charmed",
+     "frightened"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Saint of Forge and Fire",
+    "className": "Cleric",
+    "subclassShortName": "Forge"
+   },
+   "set": {
+    "immune": [
+     "fire"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Fiery Soul",
+    "className": "Sorcerer",
+    "subclassShortName": "Pyromancer (PSK)"
+   },
+   "set": {
+    "immune": [
+     "fire"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Wind Soul",
+    "className": "Sorcerer",
+    "subclassShortName": "Storm"
+   },
+   "set": {
+    "immune": [
+     "lightning",
+     "thunder"
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Radiant Soul",
+    "className": "Warlock",
+    "subclassShortName": "Celestial"
+   },
+   "set": {
+    "resist": [
+     "radiant"
+    ]
+   }
+  }
+ ],
+ "race": [
+  {
+   "match": {
+    "name": "Dhampir",
+    "source": "VRGR"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "any": 2
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Reborn",
+    "source": "VRGR"
+   },
+   "set": {
+    "skillProficiencies": [
+     {
+      "any": 2
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Autognome",
+    "source": "AAG"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 13,
+       "abilities": [
+        "dex"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Thri-kreen",
+    "source": "AAG"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 13,
+       "abilities": [
+        "dex"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Lizardfolk",
+    "source": "MPMM"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 13,
+       "abilities": [
+        "dex"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Lizardfolk",
+    "source": "VGM"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 13,
+       "abilities": [
+        "dex"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Locathah",
+    "source": "LR"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 12,
+       "abilities": [
+        "dex"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Loxodon",
+    "source": "GGR"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 12,
+       "abilities": [
+        "con"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tortle",
+    "source": "MPMM"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 17,
+       "abilities": [],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tortle",
+    "source": "TTP"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 17,
+       "abilities": [],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Goblin",
+    "source": "PSZ"
+   },
+   "set": {
+    "_grants": [
+     {
+      "NaturalArmor": {
+       "base": 11,
+       "abilities": [
+        "dex"
+       ],
+       "shield": true
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Lizardfolk",
+    "source": "DMG"
+   },
+   "set": {
+    "_grants": [
+     {
+      "AcBonus": {
+       "amount": 3,
+       "when": "Always"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Troglodyte",
+    "source": "DMG"
+   },
+   "set": {
+    "_grants": [
+     {
+      "AcBonus": {
+       "amount": 1,
+       "when": "Always"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Warforged",
+    "source": "ERLW"
+   },
+   "set": {
+    "_grants": [
+     {
+      "AcBonus": {
+       "amount": 1,
+       "when": "Always"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Warforged",
+    "source": "EFA"
+   },
+   "set": {
+    "_grants": [
+     {
+      "AcBonus": {
+       "amount": 1,
+       "when": "Always"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Tauren",
+    "source": "WoW"
+   },
+   "set": {
+    "_grants": [
+     {
+      "AcBonus": {
+       "amount": 1,
+       "when": "Always"
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "feat": [
+  {
+   "match": {
+    "name": "Rune Shaper",
+    "source": "BGG"
+   },
+   "set": {
+    "additionalSpells": [
+     {
+      "ability": {
+       "choose": [
+        "int",
+        "wis",
+        "cha"
+       ]
+      },
+      "innate": {
+       "_": {
+        "daily": {
+         "1": [
+          "comprehend languages"
+         ]
+        }
+       }
+      }
+     }
+    ],
+    "_grants": [
+     {
+      "Choose": {
+       "id": "runes",
+       "label": "Runes known",
+       "count": {
+        "ByLevel": [
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         1,
+         2,
+         2,
+         2,
+         2,
+         2,
+         2,
+         2,
+         2,
+         3,
+         3,
+         3,
+         3
+        ]
+       },
+       "options": {
+        "Bundles": [
+         {
+          "name": "Rune: Fog Cloud",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "fog cloud|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Inflict Wounds",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "inflict wounds|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Chromatic Orb",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "chromatic orb|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Disguise Self",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "disguise self|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Burning Hands",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "burning hands|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Speak With Animals",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "speak with animals|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Armor Of Agathys",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "armor of agathys|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Goodberry",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "goodberry|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Longstrider",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "longstrider|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Command",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "command|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Entangle",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "entangle|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Sanctuary",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "sanctuary|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Rune: Thunderwave",
+          "grants": [
+           {
+            "Spells": {
+             "name": null,
+             "ability": "Inherit",
+             "spells": [
+              {
+               "level": 0,
+               "kind": {
+                "Innate": "1/long rest"
+               },
+               "pick": {
+                "Fixed": "thunderwave|phb"
+               }
+              }
+             ]
+            }
+           }
+          ]
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Weapon Master",
+    "source": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "mastery",
+       "label": "Weapon Mastery",
+       "count": {
+        "Fixed": 1
+       },
+       "options": "WeaponMastery"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Mobile",
+    "source": "PHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 10
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Speedy",
+    "source": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 10
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Boon of Speed",
+    "source": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 30
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Athlete",
+    "source": "XPHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedSet": {
+       "mode": "climb",
+       "amount": null
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Mark of Passage",
+    "source": "EFA"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 5
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Transmuted Anatomy",
+    "source": "AU"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedBonus": {
+       "mode": "walk",
+       "amount": 5
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Child of the Sea",
+    "source": "WoW"
+   },
+   "set": {
+    "_grants": [
+     {
+      "SpeedSet": {
+       "mode": "swim",
+       "amount": null
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Mark of Detection",
+    "source": "EFA"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Spells": {
+       "name": null,
+       "ability": "Inherit",
+       "spells": [
+        {
+         "level": 0,
+         "kind": "Prepared",
+         "pick": {
+          "Fixed": "detect poison and disease|xphb"
+         }
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Elemental Adept",
+    "source": "PHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "element",
+       "label": "Damage type",
+       "count": {
+        "Fixed": 1
+       },
+       "options": {
+        "Bundles": [
+         {
+          "name": "Acid",
+          "grants": [
+           {
+            "Feature": {
+             "name": "Elemental Adept (Acid)",
+             "body": [
+              {
+               "P": "Spells you cast ignore resistance to acid damage, and you treat any 1 on a acid damage die as a 2."
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Cold",
+          "grants": [
+           {
+            "Feature": {
+             "name": "Elemental Adept (Cold)",
+             "body": [
+              {
+               "P": "Spells you cast ignore resistance to cold damage, and you treat any 1 on a cold damage die as a 2."
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Fire",
+          "grants": [
+           {
+            "Feature": {
+             "name": "Elemental Adept (Fire)",
+             "body": [
+              {
+               "P": "Spells you cast ignore resistance to fire damage, and you treat any 1 on a fire damage die as a 2."
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Lightning",
+          "grants": [
+           {
+            "Feature": {
+             "name": "Elemental Adept (Lightning)",
+             "body": [
+              {
+               "P": "Spells you cast ignore resistance to lightning damage, and you treat any 1 on a lightning damage die as a 2."
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "name": "Thunder",
+          "grants": [
+           {
+            "Feature": {
+             "name": "Elemental Adept (Thunder)",
+             "body": [
+              {
+               "P": "Spells you cast ignore resistance to thunder damage, and you treat any 1 on a thunder damage die as a 2."
+              }
+             ]
+            }
+           }
+          ]
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "background": [
+  {
+   "match": {
+    "name": "Genie Touched",
+    "source": "FRHoF"
+   },
+   "set": {
+    "feats": [
+     {
+      "magic initiate; wizard|xphb": true
+     }
+    ]
+   }
+  }
+ ]
 }
