@@ -107,6 +107,19 @@ pub const STEPS: [(Step, &str); 9] = [
     (Step::Basics, "Review"),
 ];
 
+/// One-line guidance shown under each step title (same place on every step).
+pub const STEP_INTROS: [&str; 9] = [
+    "Name your character and pick the rules options and books you want to use.",
+    "Your class decides how you fight, what you're good at and how you grow. Pick your starting class and level.",
+    "Your background is your life before adventuring. Under the 2024 rules it also sets your ability score increases and an origin feat.",
+    "Your species gives you traits like size, speed, senses and special abilities.",
+    "Assign your six ability scores, then see how your background or species raises them.",
+    "Choose the cantrips and spells your character knows or prepares. Only casters and characters with magical traits have choices here.",
+    "Pick your starting equipment, then add or remove anything you like. Equip armor and weapons so the sheet can use them.",
+    "Give your character a personality, appearance and history. Everything here is optional except the name.",
+    "Check that nothing is missing, then open the printable sheet.",
+];
+
 pub fn step_slug(i: usize) -> &'static str {
     ["basics", "class", "background", "species", "abilities", "spells", "equipment", "details", "review"][i]
 }
@@ -161,25 +174,6 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
         }
     });
 
-    let nav = move || {
-        let iss = issues.get();
-        STEPS
-            .iter()
-            .enumerate()
-            .map(|(i, (step, label))| {
-                let n = if i == STEPS.len() - 1 { iss.len() } else { iss.iter().filter(|x| x.step == *step).count() };
-                let href = format!("#/edit/{}/{}", id_v.get_value(), step_slug(i));
-                view! {
-                    <a class="step" class:active=i == current class:ok=n == 0 href=href>
-                        <span class="step-num">{i + 1}</span>
-                        <span class="step-label">{*label}</span>
-                        {(n > 0).then(|| view! { <span class="step-badge">{n}</span> })}
-                    </a>
-                }
-            })
-            .collect_view()
-    };
-
     let body = match current {
         0 => view! { <BasicsStep /> }.into_any(),
         1 => view! { <ClassStep /> }.into_any(),
@@ -191,41 +185,209 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
         7 => view! { <DetailsStep /> }.into_any(),
         _ => view! { <ReviewStep issues=issues /> }.into_any(),
     };
-    let prev = (current > 0).then(|| format!("#/edit/{}/{}", id, step_slug(current - 1)));
-    let next = (current + 1 < STEPS.len()).then(|| format!("#/edit/{}/{}", id, step_slug(current + 1)));
+    let prev = (current > 0).then(|| (format!("#/edit/{}/{}", id, step_slug(current - 1)), STEPS[current - 1].1));
+    let next = (current + 1 < STEPS.len()).then(|| (format!("#/edit/{}/{}", id, step_slug(current + 1)), STEPS[current + 1].1));
     let sheet_href = format!("#/sheet/{id}");
     let c5 = comp.clone();
+    let this_step = STEPS[current].0;
+    let is_review = current == STEPS.len() - 1;
+
+    let nav = move || {
+        let iss = issues.get();
+        STEPS
+            .iter()
+            .enumerate()
+            .map(|(i, (step, label))| {
+                let n = if i == STEPS.len() - 1 { iss.len() } else { iss.iter().filter(|x| x.step == *step).count() };
+                let href = format!("#/edit/{}/{}", id_v.get_value(), step_slug(i));
+                let status = if i == STEPS.len() - 1 {
+                    if n == 0 { "ready".to_string() } else { format!("{n} to do") }
+                } else if n == 0 {
+                    "done".to_string()
+                } else {
+                    format!("{n} to do")
+                };
+                view! {
+                    <li>
+                        <a class="step" class:active=i == current class:ok=n == 0 href=href
+                            aria-current=(i == current).then_some("step")>
+                            <span class="step-num" aria-hidden="true">{if n == 0 && i != current { "✓".to_string() } else { (i + 1).to_string() }}</span>
+                            <span class="step-label">{*label}</span>
+                            <span class="visually-hidden">{format!(", {status}")}</span>
+                            {(n > 0).then(|| view! { <span class="step-badge" aria-hidden="true">{n}</span> })}
+                        </a>
+                    </li>
+                }
+            })
+            .collect_view()
+    };
 
     view! {
         <div class="editor">
+            <a class="skip-link" href="#main" on:click=|ev| { ev.prevent_default(); focus_id("main"); }>"Skip to step content"</a>
             <header class="editor-head">
-                <a class="brand" href="#/">"⚔ 5e Builder"</a>
+                <a class="brand" href="#/" aria-label="5e Builder — all characters">{crate::app::logo()}<span class="brand-name">"5e Builder"</span></a>
                 <div class="who">
-                    <strong>{move || { let n = ch.with(|c| c.name.clone()); if n.is_empty() { "New character".to_string() } else { n } }}</strong>
-                    <span class="muted">{move || ch.with(|c| build.with(|b| rules::sheet(c, b, &c5).summary))}</span>
+                    <strong class="who-name">{move || { let n = ch.with(|c| c.name.clone()); if n.is_empty() { "New character".to_string() } else { n } }}</strong>
+                    <span class="who-line">{move || ch.with(|c| build.with(|b| rules::sheet(c, b, &c5).summary))}</span>
                 </div>
-                <button class="button ghost icon" title="Undo (Ctrl+Z)" disabled=move || ctx.history.with(|h| h.undo.is_empty()) on:click=move |_| ctx.undo()>"↶"</button>
-                <button class="button ghost icon" title="Redo (Ctrl+Shift+Z)" disabled=move || ctx.history.with(|h| h.redo.is_empty()) on:click=move |_| ctx.redo()>"↷"</button>
-                <a class="button" href=sheet_href>"Sheet & print"</a>
+                <div class="head-actions">
+                    <button class="icon-button" aria-label="Undo" title="Undo (Ctrl+Z)" disabled=move || ctx.history.with(|h| h.undo.is_empty()) on:click=move |_| ctx.undo()>{icon("undo")}</button>
+                    <button class="icon-button" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled=move || ctx.history.with(|h| h.redo.is_empty()) on:click=move |_| ctx.redo()>{icon("redo")}</button>
+                    <a class="button primary" href=sheet_href>{icon("print")}<span class="hide-sm">"Sheet & print"</span><span class="show-sm">"Sheet"</span></a>
+                </div>
             </header>
-            <nav class="steps">{nav}</nav>
-            <main class="step-body">{body}</main>
+            <nav class="steps" aria-label="Character creation steps"><ol>{nav}</ol></nav>
+            <main class="step-body" id="main" tabindex="-1">
+                <header class="step-header">
+                    <p class="step-kicker">{format!("Step {} of {}", current + 1, STEPS.len())}</p>
+                    <h1>{STEPS[current].1}</h1>
+                    <p class="lede">{STEP_INTROS[current]}</p>
+                </header>
+                {(!is_review).then(|| view! { <StepTodo step=this_step issues=issues /> })}
+                {body}
+            </main>
+            <aside class="rail" aria-label="Character summary"><SummaryRail issues=issues /></aside>
             <footer class="step-foot">
-                {prev.map(|h| view! { <a class="button ghost" href=h>"← Back"</a> })}
+                {prev.map(|(h, label)| view! { <a class="button ghost" href=h>{icon("back")}<span>{label}</span></a> })}
                 <span class="spacer"></span>
                 {move || {
                     let iss = issues.get();
                     let target = STEPS.iter().position(|(s, _)| iss.iter().any(|i| i.step == *s))?;
                     (target != current).then(|| {
                         let href = format!("#/edit/{}/{}", id_v.get_value(), step_slug(target));
-                        view! { <a class="button ghost" href=href title="Go to the first step with something left to do">"Next unfinished"</a> }
+                        view! { <a class="button ghost hide-sm" href=href title="Go to the first step with something left to do">"Next unfinished"</a> }
                     })
                 }}
-                {next.map(|h| view! { <a class="button primary" href=h>"Next →"</a> })}
+                {next.map(|(h, label)| view! { <a class="button primary" href=h><span>{label}</span>{icon("next")}</a> })}
             </footer>
         </div>
     }
     .into_any()
+}
+
+/// Moves keyboard focus to an element (and scrolls it into view).
+pub fn focus_id(id: &str) {
+    if let Some(el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.get_element_by_id(id)) {
+        el.scroll_into_view();
+        if let Ok(h) = wasm_bindgen::JsCast::dyn_into::<web_sys::HtmlElement>(el) {
+            let _ = h.focus();
+        }
+    }
+}
+
+/// DOM id for a choice section.
+pub fn choice_anchor(path: &str) -> String {
+    let slug: String = path.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    format!("choice-{slug}")
+}
+
+/// "Left on this step": every unfinished item, each a link to the choice (GOV.UK error-summary pattern).
+#[component]
+fn StepTodo(step: Step, issues: Memo<Vec<rules::Issue>>) -> impl IntoView {
+    let ctx = expect_context::<EditorCtx>();
+    let items = Memo::new(move |_| {
+        let pending: Vec<(String, String)> = ctx.build.with(|b| {
+            b.choices
+                .iter()
+                .filter(|c| c.step == step && !c.is_complete())
+                .map(|c| (choice_anchor(&c.path), format!("{} — {} ({} of {} chosen)", c.label, c.origin, c.picked(), c.count)))
+                .collect()
+        });
+        let other: Vec<String> = issues.with(|iss| {
+            iss.iter()
+                .filter(|i| i.step == step && !i.text.contains(" — "))
+                .map(|i| i.text.clone())
+                .collect()
+        });
+        (pending, other)
+    });
+    move || {
+        let (pending, other) = items.get();
+        if pending.is_empty() && other.is_empty() {
+            return view! { <p class="todo done" role="status">{icon("check")}"Everything on this step is done."</p> }.into_any();
+        }
+        let n = pending.len() + other.len();
+        view! {
+            <section class="todo" aria-labelledby="todo-title">
+                <h2 id="todo-title">{format!("Left on this step ({n})")}</h2>
+                <ul>
+                    {other.into_iter().map(|t| view! { <li>{t}</li> }).collect_view()}
+                    {pending.into_iter().map(|(anchor, text)| {
+                        let a2 = anchor.clone();
+                        view! { <li><a href=format!("#{anchor}") on:click=move |ev| { ev.prevent_default(); focus_id(&a2); }>{text}</a></li> }
+                    }).collect_view()}
+                </ul>
+            </section>
+        }
+        .into_any()
+    }
+}
+
+/// Live character snapshot shown beside every step.
+#[component]
+fn SummaryRail(issues: Memo<Vec<rules::Issue>>) -> impl IntoView {
+    let ctx = expect_context::<EditorCtx>();
+    let comp = ctx.comp.get_value();
+    let sheet = Memo::new(move |_| ctx.ch.with(|c| ctx.build.with(|b| rules::sheet(c, b, &comp))));
+    let progress = Memo::new(move |_| {
+        ctx.build.with(|b| {
+            let total = b.choices.len().max(1);
+            let done = b.choices.iter().filter(|c| c.is_complete()).count();
+            (done, total)
+        })
+    });
+    move || {
+        let s = sheet.get();
+        let (done, total) = progress.get();
+        let left = issues.with(|i| i.len());
+        let pct = (done * 100 / total).min(100);
+        view! {
+            <div class="rail-card">
+                <p class="rail-title">{s.name.clone()}</p>
+                <p class="rail-sub">{if s.summary.is_empty() { "Choose a class to begin".to_string() } else { format!("Level {} · {}", s.level, s.summary) }}</p>
+                <div class="meter" role="img" aria-label=format!("{done} of {total} choices made")>
+                    <div class="meter-fill" style=format!("width: {pct}%")></div>
+                </div>
+                <p class="rail-note">{if left == 0 { "Ready to print".to_string() } else { format!("{left} thing{} left to do", if left == 1 { "" } else { "s" }) }}</p>
+                <dl class="rail-stats">
+                    <div><dt>"AC"</dt><dd>{s.armor_class}</dd></div>
+                    <div><dt>"HP"</dt><dd>{s.hp_max}</dd></div>
+                    <div><dt>"Speed"</dt><dd>{s.speed.walk}</dd></div>
+                    <div><dt>"Prof."</dt><dd>{compendium::signed(s.proficiency_bonus)}</dd></div>
+                </dl>
+                <dl class="rail-abilities">
+                    {s.abilities.iter().map(|a| view! {
+                        <div><dt>{a.ability.abbr()}</dt><dd><span class="mod">{compendium::signed(a.modifier)}</span><span class="score">{a.score}</span></dd></div>
+                    }).collect_view()}
+                </dl>
+            </div>
+        }
+    }
+}
+
+/// Inline SVG icons (decorative; buttons carry their own labels).
+pub fn icon(name: &str) -> impl IntoView {
+    let d = match name {
+        "undo" => "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+        "redo" => "m15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13",
+        "print" => "M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z",
+        "back" => "M15 18l-6-6 6-6",
+        "next" => "M9 18l6-6-6-6",
+        "check" => "M20 6 9 17l-5-5",
+        "plus" => "M12 5v14M5 12h14",
+        "sparkle" => "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z",
+        "dice" => "M12 2 3 7v10l9 5 9-5V7zM12 22V12M3 7l9 5 9-5",
+        "info" => "M12 16v-4M12 8h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z",
+        "x" => "M18 6 6 18M6 6l12 12",
+        "upload" => "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
+        "download" => "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+        _ => "",
+    };
+    view! {
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d=d /></svg>
+    }
 }
 
 /// Choice pickers for every choice of a step, in build order.
@@ -268,8 +430,8 @@ fn BasicsStep() -> impl IntoView {
             view! {
                 <fieldset class="source-group">
                     <legend>{g.label()}
-                        <button class="link" on:click=move |_| { let ids = ids.clone(); ctx.edit(|c| ids.iter().for_each(|i| { c.settings.disabled_sources.remove(i); })) }>"all"</button>
-                        <button class="link" on:click=move |_| { let ids = ids2.clone(); ctx.edit(|c| c.settings.disabled_sources.extend(ids)) }>"none"</button>
+                        <button class="link-button" aria-label=format!("Use all {} sources", g.label()) on:click=move |_| { let ids = ids.clone(); ctx.edit(|c| ids.iter().for_each(|i| { c.settings.disabled_sources.remove(i); })) }>"All"</button>
+                        <button class="link-button" aria-label=format!("Turn off all {} sources", g.label()) on:click=move |_| { let ids = ids2.clone(); ctx.edit(|c| c.settings.disabled_sources.extend(ids)) }>"None"</button>
                     </legend>
                     <div class="source-list">
                         {list.into_iter().map(|s| {
@@ -291,7 +453,6 @@ fn BasicsStep() -> impl IntoView {
         .collect_view();
 
     view! {
-        <h2>"Basics"</h2>
         <label class="field big">
             <span>"Character name"</span>
             <input type="text" placeholder="e.g. Elowen Brightwater"
@@ -303,7 +464,7 @@ fn BasicsStep() -> impl IntoView {
             <input type="text" prop:value=move || ctx.ch.with(|c| c.details.player.clone())
                 on:input=move |ev| { let v = event_target_value(&ev); ctx.edit(|c| c.details.player = v) } />
         </label>
-        <h3>"Rules"</h3>
+        <h2>"Rules"</h2>
         <p class="muted">"The wizard follows the 2024 Player's Handbook. Older (legacy) species, backgrounds, classes and subclasses are available too and are adapted to the 2024 rules."</p>
         <label class="toggle">
             <input type="checkbox" prop:checked=move || ctx.ch.with(|c| c.settings.legacy_species_asi)
@@ -315,7 +476,7 @@ fn BasicsStep() -> impl IntoView {
                 on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.settings.average_hp = on) } />
             "Take average hit points when gaining levels"
         </label>
-        <h3>"Sources"</h3>
+        <h2>"Sources"</h2>
         <p class="muted">"Content from unchecked sources is hidden from every list."</p>
         {groups_view}
     }
@@ -360,7 +521,7 @@ fn CardGrid(cards: Signal<Vec<Card>>, selected: Signal<Option<Key>>, on_pick: Ca
     };
     view! {
         <div class="grid-tools">
-            <input class="search" type="search" placeholder="Search…" prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev)) />
+            <input class="search" type="search" placeholder="Search by name or book" aria-label="Search" prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev)) />
             <label class="toggle small"><input type="checkbox" prop:checked=move || hide_legacy.get() on:change=move |ev| hide_legacy.set(event_target_checked(&ev)) />"Hide legacy"</label>
         </div>
         <div class="cards">{shown}</div>
@@ -416,7 +577,7 @@ fn ClassStep() -> impl IntoView {
             <div class="summary-card">
                 <div class="summary-head">
                     <div>
-                        <h3>{class.name.clone()}</h3>
+                        <h2>{class.name.clone()}</h2>
                         <span class="muted">{c2.source_name(&class.source)}{class.legacy.then_some(" · legacy")}</span>
                     </div>
                     <button class="button ghost" on:click=move |_| browsing.set(true)>"Change class"</button>
@@ -436,7 +597,6 @@ fn ClassStep() -> impl IntoView {
     };
 
     view! {
-        <h2>"Class"</h2>
         <Show when=move || browsing.get() || selected.get().is_none()>
             <p class="muted">"Pick the class your character starts in. You can add levels in other classes below."</p>
             <CardGrid cards=cards selected=selected on_pick=on_pick />
@@ -444,7 +604,7 @@ fn ClassStep() -> impl IntoView {
         <Show when=move || !browsing.get() && selected.get().is_some()>
             {summary.clone()}
             <LevelsPanel />
-            <h3>"Class choices"</h3>
+            <h2>"Class choices"</h2>
             <StepChoices step=Step::Class />
         </Show>
     }
@@ -501,7 +661,7 @@ fn LevelsPanel() -> impl IntoView {
                 <summary>"Levels & multiclassing"</summary>
                 {levels_view}
                 <div class="row">
-                    <select on:change=move |ev| add_class.set(event_target_value(&ev))>
+                    <select aria-label="Class for the next level" on:change=move |ev| add_class.set(event_target_value(&ev))>
                         <option value="">"Add a level in…"</option>
                         {options.into_iter().map(|(k, n)| view! { <option value=k>{n}</option> }).collect_view()}
                     </select>
@@ -561,7 +721,7 @@ fn BackgroundStep() -> impl IntoView {
         Some(view! {
             <div class="summary-card">
                 <div class="summary-head">
-                    <div><h3>{b.name.clone()}</h3><span class="muted">{c2.source_name(&b.source)}</span></div>
+                    <div><h2>{b.name.clone()}</h2><span class="muted">{c2.source_name(&b.source)}</span></div>
                     <button class="button ghost" on:click=move |_| browsing.set(true)>"Change background"</button>
                 </div>
                 <p>{grants_summary(&c2, &b.grants)}</p>
@@ -571,7 +731,6 @@ fn BackgroundStep() -> impl IntoView {
         })
     };
     view! {
-        <h2>"Background"</h2>
         <Show when=move || browsing.get() || selected.get().is_none()>
             <CardGrid cards=cards selected=selected on_pick=on_pick />
         </Show>
@@ -623,7 +782,7 @@ fn SpeciesStep() -> impl IntoView {
         Some(view! {
             <div class="summary-card">
                 <div class="summary-head">
-                    <div><h3>{s.name.clone()}</h3><span class="muted">{c2.source_name(&s.source)}{s.legacy.then_some(" · legacy")}</span></div>
+                    <div><h2>{s.name.clone()}</h2><span class="muted">{c2.source_name(&s.source)}{s.legacy.then_some(" · legacy")}</span></div>
                     <button class="button ghost" on:click=move |_| browsing.set(true)>"Change species"</button>
                 </div>
                 <p>{format!("{} {} · Speed {} ft.", s.sizes.iter().map(|x| x.name()).collect::<Vec<_>>().join(" or "), s.creature_type, s.speed.walk)}</p>
@@ -632,7 +791,6 @@ fn SpeciesStep() -> impl IntoView {
         })
     };
     view! {
-        <h2>"Species"</h2>
         <Show when=move || browsing.get() || selected.get().is_none()>
             <CardGrid cards=cards selected=selected on_pick=on_pick />
         </Show>
@@ -682,9 +840,9 @@ fn AbilitiesStep() -> impl IntoView {
                 let input = match m {
                     AbilityMethod::PointBuy => view! {
                         <div class="stepper">
-                            <button disabled=base[i] <= 8 on:click=move |_| ctx.edit(|c| c.abilities.scores[i] = c.abilities.scores[i].saturating_sub(1).max(8))>"−"</button>
-                            <span class="score">{base[i]}</span>
-                            <button disabled=base[i] >= 15 on:click=move |_| ctx.edit(|c| c.abilities.scores[i] = (c.abilities.scores[i] + 1).min(15))>"+"</button>
+                            <button aria-label=format!("Decrease {}", a.name()) disabled=base[i] <= 8 on:click=move |_| ctx.edit(|c| c.abilities.scores[i] = c.abilities.scores[i].saturating_sub(1).max(8))>"−"</button>
+                            <span class="score" aria-live="polite" aria-label=format!("{} base score {}", a.name(), base[i])>{base[i]}</span>
+                            <button aria-label=format!("Increase {}", a.name()) disabled=base[i] >= 15 on:click=move |_| ctx.edit(|c| c.abilities.scores[i] = (c.abilities.scores[i] + 1).min(15))>"+"</button>
                             <span class="muted small">{format!("cost {}", rules::point_cost(base[i]).unwrap_or(0))}</span>
                         </div>
                     }
@@ -696,7 +854,7 @@ fn AbilitiesStep() -> impl IntoView {
                         values.dedup();
                         let used: Vec<u8> = base.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, v)| *v).collect();
                         view! {
-                            <select disabled=pool.is_empty() on:change=move |ev| { let v: u8 = event_target_value(&ev).parse().unwrap_or(0); ctx.edit(|c| c.abilities.scores[i] = v) }>
+                            <select aria-label=format!("{} base score", a.name()) disabled=pool.is_empty() on:change=move |ev| { let v: u8 = event_target_value(&ev).parse().unwrap_or(0); ctx.edit(|c| c.abilities.scores[i] = v) }>
                                 <option value="0" selected=base[i] == 0>"—"</option>
                                 {values.iter().map(|&v| {
                                     let taken = used.iter().filter(|u| **u == v).count() >= pool.iter().filter(|x| **x == v).count();
@@ -707,7 +865,7 @@ fn AbilitiesStep() -> impl IntoView {
                         .into_any()
                     }
                     AbilityMethod::Manual => view! {
-                        <input class="num" type="number" min="1" max="30" prop:value=base[i].to_string()
+                        <input class="num" type="number" min="1" max="30" aria-label=format!("{} base score", a.name()) prop:value=base[i].to_string()
                             on:change=move |ev| { let v: u8 = event_target_value(&ev).parse().unwrap_or(10); ctx.edit(|c| c.abilities.scores[i] = v.clamp(1, 30)) } />
                     }
                     .into_any(),
@@ -728,7 +886,6 @@ fn AbilitiesStep() -> impl IntoView {
         view! { <button class="tab" class:active=move || method() == m on:click=move |_| set_method(m)>{label}</button> }
     };
     view! {
-        <h2>"Ability scores"</h2>
         <div class="tabs">
             {tab(AbilityMethod::PointBuy, "Point buy")}
             {tab(AbilityMethod::StandardArray, "Standard array")}
@@ -758,11 +915,11 @@ fn AbilitiesStep() -> impl IntoView {
         {move || problem().map(|p| view! { <p class="note">{p}</p> })}
         <div class="table-wrap">
             <table class="abilities">
-                <thead><tr><th></th><th>"Base"</th><th>"Bonuses"</th><th>"Score"</th><th>"Mod"</th></tr></thead>
+                <thead><tr><th>"Ability"</th><th>"Base"</th><th>"Bonuses"</th><th>"Score"</th><th>"Modifier"</th></tr></thead>
                 <tbody>{rows}</tbody>
             </table>
         </div>
-        <h3>"Ability score increases"</h3>
+        <h2>"Ability score increases"</h2>
         <StepChoices step=Step::Background filter=is_ability_choice />
         <StepChoices step=Step::Species filter=is_ability_choice />
     }
@@ -818,7 +975,6 @@ fn SpellsStep() -> impl IntoView {
         .into_any()
     };
     view! {
-        <h2>"Spells"</h2>
         {casting}
         <StepChoices step=Step::Spells />
     }
@@ -882,18 +1038,18 @@ fn EquipmentStep() -> impl IntoView {
         }
         view! {
             <table class="inventory">
-                <thead><tr><th>"Item"</th><th>"Qty"</th><th>"Equipped"</th><th>"Attuned"</th><th></th></tr></thead>
+                <thead><tr><th>"Item"</th><th>"Qty"</th><th>"Equipped"</th><th>"Attuned"</th><th><span class="visually-hidden">"Actions"</span></th></tr></thead>
                 <tbody>
                     {inv.into_iter().enumerate().map(|(i, it)| view! {
                         <tr>
                             <td>{it.name.clone()}{it.starting.then(|| view! { <span class="badge">"starting"</span> })}</td>
-                            <td><input class="num" type="number" min="1" prop:value=it.qty.to_string()
+                            <td><input class="num" type="number" min="1" aria-label=format!("Quantity of {}", it.name) prop:value=it.qty.to_string()
                                 on:change=move |ev| { let q: u16 = event_target_value(&ev).parse().unwrap_or(1); ctx.edit(|c| { c.inventory[i].qty = q.max(1); c.inventory[i].starting = false; }) } /></td>
-                            <td><input type="checkbox" prop:checked=it.equipped on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.inventory[i].equipped = on) } /></td>
+                            <td><input type="checkbox" aria-label=format!("{} equipped", it.name) prop:checked=it.equipped on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.inventory[i].equipped = on) } /></td>
                             <td>{it.item.as_ref().and_then(|k| ctx.comp.get_value().items.get(k).map(|x| x.attunement)).unwrap_or(false).then(|| view! {
-                                <input type="checkbox" prop:checked=it.attuned on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.inventory[i].attuned = on) } />
+                                <input type="checkbox" aria-label="Attuned" prop:checked=it.attuned on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.inventory[i].attuned = on) } />
                             })}</td>
-                            <td><button class="link" on:click=move |_| ctx.edit(|c| { c.inventory.remove(i); })>"remove"</button></td>
+                            <td><button class="link-button" aria-label=format!("Remove {}", it.name) on:click=move |_| ctx.edit(|c| { c.inventory.remove(i); })>{icon("x")}"Remove"</button></td>
                         </tr>
                     }).collect_view()}
                 </tbody>
@@ -911,15 +1067,18 @@ fn EquipmentStep() -> impl IntoView {
         }
     };
     view! {
-        <h2>"Equipment"</h2>
         <StepChoices step=Step::Equipment />
-        <h3>"Inventory"</h3>
+        <h2>"Inventory"</h2>
         {inventory}
         <div class="add-item">
-            <input class="search" type="search" placeholder="Add an item from the compendium…" prop:value=move || query.get() on:input=move |ev| query.set(event_target_value(&ev)) />
+            <label class="field"><span>"Add an item from the compendium"</span>
+                <input class="search" type="search" placeholder="e.g. rope, longsword, potion" prop:value=move || query.get() on:input=move |ev| query.set(event_target_value(&ev)) />
+            </label>
             {results}
             <div class="row">
-                <input type="text" placeholder="…or a custom item" prop:value=move || custom.get() on:input=move |ev| custom.set(event_target_value(&ev)) />
+                <label class="field inline grow"><span>"Custom item"</span>
+                    <input type="text" prop:value=move || custom.get() on:input=move |ev| custom.set(event_target_value(&ev)) />
+                </label>
                 <button class="button" disabled=move || custom.get().trim().is_empty() on:click=move |_| {
                     let name = custom.get().trim().to_string();
                     ctx.edit(|c| c.inventory.push(rules::InventoryItem { item: None, name, qty: 1, equipped: false, attuned: false, starting: false, notes: String::new() }));
@@ -927,7 +1086,7 @@ fn EquipmentStep() -> impl IntoView {
                 }>"Add"</button>
             </div>
         </div>
-        <h3>"Coins"</h3>
+        <h2>"Coins"</h2>
         <div class="coins">
             {coin("CP", |c| c.cp, |c, v| c.cp = v)}
             {coin("SP", |c| c.sp, |c, v| c.sp = v)}
@@ -962,7 +1121,6 @@ fn DetailsStep() -> impl IntoView {
         }
     };
     view! {
-        <h2>"Details"</h2>
         <label class="field big"><span>"Character name"</span>
             <input type="text" prop:value=move || ctx.ch.with(|c| c.name.clone()) on:input=move |ev| { let v = event_target_value(&ev); ctx.edit(|c| c.name = v) } />
         </label>
@@ -1019,7 +1177,6 @@ fn ReviewStep(issues: Memo<Vec<rules::Issue>>) -> impl IntoView {
         .into_any()
     };
     view! {
-        <h2>"Review"</h2>
         {list}
         <div class="row">
             <a class="button primary" href=sheet_href>"Open character sheet"</a>

@@ -1,7 +1,7 @@
 //! Generic renderer for any rules choice: lists, searchable lists and
 //! ordered ability-bonus slots, all driven by `rules::options`.
 
-use crate::editor::EditorCtx;
+use crate::editor::{choice_anchor, icon, EditorCtx};
 use crate::entries::Entries;
 use compendium::{Ability, Options};
 use leptos::prelude::*;
@@ -42,16 +42,18 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
         let total_level = ctx.ch.with(|ch| ch.total_level());
         let is_new = total_level > 1 && c.level == total_level;
         let p_fill = path.clone();
+        let anchor = choice_anchor(&path);
+        let title_id = format!("{anchor}-title");
         let header = view! {
             <div class="choice-head">
                 <div>
-                    <span class="choice-label">{c.label.clone()}</span>
-                    <span class="choice-origin">{c.origin.clone()}</span>
+                    <h2 class="choice-label" id=title_id.clone()>{c.label.clone()}</h2>
+                    <span class="choice-origin" id=format!("{anchor}-origin")>{c.origin.clone()}</span>
                     {is_new.then(|| view! { <span class="badge new">"New this level"</span> })}
                 </div>
                 <div class="choice-tools">
                     {(!done).then(|| view! {
-                        <button class="link" title="Pick for me" on:click=move |_| {
+                        <button class="link-button" on:click=move |_| {
                             let comp = ctx.comp.get_value();
                             let p = p_fill.clone();
                             ctx.edit(|ch| {
@@ -60,9 +62,11 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
                                     pick_for(ch, &c, &b, &comp);
                                 }
                             });
-                        }>"pick for me"</button>
+                        }>{icon("sparkle")}"Pick for me"</button>
                     })}
-                    <span class="counter" class:done=done class:over={n > count}>{format!("{n} / {count}")}</span>
+                    <span class="counter" class:done=done class:over={n > count} aria-live="polite">
+                        <span class="visually-hidden">"Chosen: "</span>{format!("{n} / {count}")}
+                    </span>
                 </div>
             </div>
         };
@@ -92,10 +96,10 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
                         {labels.into_iter().map(|(v, l)| {
                             let (sel, p) = (sel.clone(), p.clone());
                             view! {
-                                <button class="chip" title="Remove" on:click=move |_| {
+                                <button class="chip removable" aria-label=format!("Remove {l}") on:click=move |_| {
                                     let next: Vec<String> = sel.iter().filter(|x| **x != v).cloned().collect();
                                     ctx.edit(|ch| ch.set_choice(&p, next));
-                                }>{l}" ×"</button>
+                                }>{l.clone()}{icon("x")}</button>
                             }
                         }).collect_view()}
                     </div>
@@ -103,12 +107,15 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
             });
             let group_bar = (many && groups.len() > 1).then(|| {
                 view! {
-                    <div class="group-bar">
-                        <button class="tab small" class:active=move || group.get().is_none() on:click=move |_| group.set(None)>"All"</button>
+                    <div class="group-bar" role="group" aria-label="Filter options">
+                        <button class="tab small" class:active=move || group.get().is_none() aria-pressed=move || group.get().is_none().to_string() on:click=move |_| group.set(None)>"All"</button>
                         {groups.into_iter().map(|g| {
                             let g2 = g.clone();
                             let g3 = g.clone();
-                            view! { <button class="tab small" class:active=move || group.get().as_deref() == Some(g2.as_str()) on:click=move |_| group.set(Some(g3.clone()))>{g}</button> }
+                            {
+                            let g4 = g.clone();
+                            view! { <button class="tab small" class:active=move || group.get().as_deref() == Some(g2.as_str()) aria-pressed=move || (group.get().as_deref() == Some(g4.as_str())).to_string() on:click=move |_| group.set(Some(g3.clone()))>{g}</button> }
+                        }
                         }).collect_view()}
                     </div>
                 }
@@ -128,7 +135,7 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
             view! {
                 {chips}
                 {many.then(|| view! {
-                    <input class="search" type="search" placeholder="Search…"
+                    <input class="search" type="search" placeholder="Search options" aria-label="Search options"
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev)) />
                 })}
@@ -137,7 +144,7 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
             }
             .into_any()
         };
-        view! { <section class="choice" class:complete=done class:fresh=is_new>{header}{body}</section> }.into_any()
+        view! { <section class="choice" class:complete=done class:fresh=is_new id=anchor.clone() tabindex="-1" role="group" aria-labelledby=format!("{title_id} {anchor}-origin")>{header}{body}</section> }.into_any()
     }
 }
 
@@ -166,20 +173,22 @@ fn option_row(o: OptionItem, selected: &[String], count: usize, path: String, in
     };
     let has_body = !o.body.is_empty();
     let v2 = o.value.clone();
+    let v2b = o.value.clone();
     let v3 = o.value.clone();
     let body = o.body.clone();
     view! {
         <div class="option" class:selected=is_sel class:disabled=blocked class:dim=full && !is_sel>
-            <button class="option-main" on:click=on_pick disabled=blocked>
-                <span class="check">{if is_sel { "✓" } else { "" }}</span>
+            <button class="option-main" on:click=on_pick disabled=blocked aria-pressed=is_sel.to_string()
+                aria-disabled=(full && !is_sel).then_some("true") title=(full && !is_sel).then_some("Limit reached — remove a selection first")>
+                <span class="check" aria-hidden="true">{is_sel.then(|| icon("check"))}</span>
                 <span class="option-label">{o.label.clone()}</span>
                 <span class="option-detail">{o.detail.clone()}</span>
                 {o.warning.clone().map(|w| view! { <span class="badge warn">{w}</span> })}
                 {o.disabled.clone().filter(|_| !is_sel).map(|d| view! { <span class="badge">{d}</span> })}
             </button>
             {has_body.then(|| view! {
-                <button class="info" title="Details"
-                    on:click=move |_| inspect.update(|i| *i = if i.as_deref() == Some(&v2) { None } else { Some(v2.clone()) })>"ⓘ"</button>
+                <button class="info" aria-label=format!("Details: {}", o.label) aria-expanded=move || (inspect.get().as_deref() == Some(v2b.as_str())).to_string()
+                    on:click=move |_| inspect.update(|i| *i = if i.as_deref() == Some(&v2) { None } else { Some(v2.clone()) })>{icon("info")}</button>
             })}
             {move || (inspect.get().as_deref() == Some(v3.as_str())).then(|| view! {
                 <div class="option-body"><Entries entries=body.clone() /></div>
@@ -203,7 +212,7 @@ fn ability_slots(options: &Options, selected: Vec<String>, path: String, ctx: Ed
             view! {
                 <label class="ability-slot">
                     <span class="amount">{compendium::signed(*amount as i32)}</span>
-                    <select on:change=move |ev| {
+                    <select aria-label=format!("Ability for {}", compendium::signed(*amount as i32)) on:change=move |ev| {
                         let v = event_target_value(&ev);
                         let mut next = sel.clone();
                         next.resize(n, String::new());

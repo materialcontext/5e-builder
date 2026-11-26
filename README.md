@@ -10,6 +10,21 @@ A D&D 5e character builder, manager and printable character sheet, written in Ru
 - **All content** from the 5etools data, with per-source toggles.
 - **Streamlined**: "choose the rest for me" per step and "pick for me" per choice (skills that use your best abilities, bonuses into your class's primary ability), auto-assign scores for your class, 4d6 rolling, undo/redo (Ctrl+Z), "next unfinished", spell-level and feat-category filters, and "new this level" highlights when levelling up.
 
+## Design
+
+The interface and printed sheet follow research-backed guidelines in
+[`docs/design-guidelines.md`](docs/design-guidelines.md) (NN/G wizard and form
+research, GOV.UK error-summary pattern, Baymard validation studies, WCAG 2.2
+AA, print CSS practice, and 2024 character-sheet conventions). Checks:
+
+- `python3 -I tools/contrast.py` — every colour token pair meets WCAG AA in
+  light and dark themes.
+- axe-core scans of every screen (light, dark, phone) report no violations.
+- Fonts (Inter, Alegreya) are self-hosted under the SIL Open Font License
+  (`crates/web/fonts`).
+
+Content coverage is documented in [`docs/content-audit.md`](docs/content-audit.md).
+
 ## Layout
 
 ```

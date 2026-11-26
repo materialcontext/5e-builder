@@ -1,6 +1,6 @@
 //! App shell: compendium loading, hash routing and the character manager.
 
-use crate::editor::Editor;
+use crate::editor::{icon, Editor};
 use crate::sheet::SheetPage;
 use crate::store::{self, Store};
 use compendium::Compendium;
@@ -73,8 +73,28 @@ pub fn App() -> impl IntoView {
     on_cleanup(move || handle.remove());
 
     move || match compendium.get() {
-        None => view! { <div class="loading">"Loading compendium…"</div> }.into_any(),
-        Some(Err(e)) => view! { <div class="page error"><h2>"Could not load data"</h2><p>{e}</p></div> }.into_any(),
+        None => view! {
+            <main class="loading" aria-busy="true">
+                <div class="loading-card">
+                    {logo()}
+                    <h1>"5e Builder"</h1>
+                    <div class="progress-indeterminate" role="progressbar" aria-label="Loading rules compendium"><span></span></div>
+                    <p class="muted">"Loading the rules compendium (about 1.3 MB)…"</p>
+                </div>
+            </main>
+        }
+        .into_any(),
+        Some(Err(e)) => view! {
+            <main class="loading">
+                <div class="loading-card" role="alert">
+                    {logo()}
+                    <h1>"Couldn't load the rules"</h1>
+                    <p>{e}</p>
+                    <button class="button primary" on:click=move |_| compendium.refetch()>"Try again"</button>
+                </div>
+            </main>
+        }
+        .into_any(),
         Some(Ok(c)) => {
             let comp = Arc::new(c);
             provide_context(comp.clone());
@@ -90,6 +110,26 @@ fn Routed(route: RwSignal<Route>) -> impl IntoView {
         Route::Edit(id, step) => view! { <Editor id=id step=step /> }.into_any(),
         Route::Sheet(id) => view! { <SheetPage id=id /> }.into_any(),
     }
+}
+
+/// Brand mark: a stylised d20.
+pub fn logo() -> impl IntoView {
+    view! {
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <path d="M16 2 28 9v14l-12 7-12-7V9z" fill="var(--accent)" />
+            <path d="M16 2 28 9 16 13 4 9zM16 13v17M4 9l12 4 12-4M4 23l12-10 12 10" fill="none" stroke="var(--accent-ink)" stroke-width="1.4" stroke-linejoin="round" opacity=".85" />
+        </svg>
+    }
+}
+
+/// Stable hue per class for avatars (decorative).
+fn avatar_hue(s: &str) -> u32 {
+    s.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32)) % 360
+}
+
+fn initials(name: &str) -> String {
+    let i: String = name.split_whitespace().filter_map(|w| w.chars().next()).take(2).collect();
+    if i.is_empty() { "?".into() } else { i.to_uppercase() }
 }
 
 #[component]
@@ -138,86 +178,125 @@ fn Home() -> impl IntoView {
         if chars.is_empty() {
             return view! {
                 <div class="empty">
-                    <p>"No characters yet."</p>
-                    <p class="muted">"Create one with the step-by-step wizard, or import a JSON file."</p>
+                    <svg class="empty-art" viewBox="0 0 120 90" aria-hidden="true">
+                        <rect x="20" y="10" width="62" height="76" rx="6" fill="var(--surface)" stroke="var(--line-strong)" stroke-width="2" />
+                        <path d="M32 28h38M32 40h30M32 52h34M32 64h22" stroke="var(--line-strong)" stroke-width="3" stroke-linecap="round" />
+                        <path d="M86 26l12 7v14l-12 7-12-7V33z" fill="var(--accent)" />
+                    </svg>
+                    <h2>"No characters yet"</h2>
+                    <p class="muted">"Create one with the step-by-step builder. It takes about ten minutes, and you can save, edit and print it any time."</p>
+                    <button class="button primary big" on:click=create>{icon("plus")}"Create your first character"</button>
                 </div>
             }
             .into_any();
         }
-        chars
-            .into_iter()
-            .map(|c| {
-                let b = rules::build(&c, &comp);
-                let s = rules::sheet(&c, &b, &comp);
-                let pending = rules::issues(&c, &b, &comp).len();
-                let (id1, id2, id3, id4) = (c.id.clone(), c.id.clone(), c.id.clone(), c.id.clone());
-                let c_export = c.clone();
-                let name = s.name.clone();
-                view! {
-                    <article class="char-card">
-                        <div class="char-main">
-                            <h3><a href=format!("#/edit/{id1}/basics")>{s.name.clone()}</a></h3>
-                            <p>{if s.summary.is_empty() { "Not started".to_string() } else { format!("Level {} · {}", s.level, s.summary) }}</p>
-                            <p class="muted small">{s.background.clone()}{(pending > 0).then(|| format!(" · {pending} unfinished"))}</p>
-                        </div>
-                        <div class="char-actions">
-                            <a class="button primary" href=format!("#/sheet/{id2}")>"Sheet"</a>
-                            <a class="button ghost" href=format!("#/edit/{id3}/class")>"Edit"</a>
-                            {(s.level < 20 && !c.levels.is_empty()).then(|| {
-                                let id = c.id.clone();
-                                let last = c.levels.last().map(|l| l.class.clone());
-                                view! {
-                                    <button class="button ghost" title="Add a level in your most recent class (change it on the Class step)" on:click=move |_| {
-                                        if let Some(k) = last.clone() {
-                                            store::update(store, &id, |c| c.level_up(k));
-                                            go(Route::Edit(id.clone(), "class".into()));
-                                        }
-                                    }>"Level up"</button>
-                                }
-                            })}
-                            <button class="button ghost" on:click=move |_| {
-                                store.update(|all| {
-                                    if let Some(orig) = all.iter().find(|x| x.id == id4).cloned() {
-                                        let mut copy = orig;
-                                        copy.id = store::new_id();
-                                        copy.name = format!("{} (copy)", copy.name);
-                                        copy.updated = store::now();
-                                        all.push(copy);
+        view! {
+            <ul class="char-grid" role="list">
+                {chars
+                    .into_iter()
+                    .map(|c| {
+                        let b = rules::build(&c, &comp);
+                        let s = rules::sheet(&c, &b, &comp);
+                        let pending = rules::issues(&c, &b, &comp).len();
+                        let (id1, id2, id3, id4) = (c.id.clone(), c.id.clone(), c.id.clone(), c.id.clone());
+                        let c_export = c.clone();
+                        let name = s.name.clone();
+                        let hue = avatar_hue(&s.class_line);
+                        let level_up = (s.level < 20 && !c.levels.is_empty()).then(|| {
+                            let id = c.id.clone();
+                            let last = c.levels.last().map(|l| l.class.clone());
+                            view! {
+                                <button class="menu-item" on:click=move |_| {
+                                    if let Some(k) = last.clone() {
+                                        store::update(store, &id, |c| c.level_up(k));
+                                        go(Route::Edit(id.clone(), "class".into()));
                                     }
-                                })
-                            }>"Duplicate"</button>
-                            <button class="button ghost" on:click=move |_| store::download(&store::file_name(&c_export), &serde_json::to_string_pretty(&c_export).unwrap_or_default())>"Export"</button>
-                            <button class="button danger" on:click=move |_| {
-                                let ok = web_sys::window().and_then(|w| w.confirm_with_message(&format!("Delete {name}? This cannot be undone.")).ok()).unwrap_or(false);
-                                if ok {
-                                    let id = c.id.clone();
-                                    store.update(|all| all.retain(|x| x.id != id));
-                                }
-                            }>"Delete"</button>
-                        </div>
-                    </article>
-                }
-            })
-            .collect_view()
-            .into_any()
+                                }>"Level up"</button>
+                            }
+                        });
+                        view! {
+                            <li class="char-card">
+                                <a class="char-main" href=format!("#/edit/{id1}/basics")>
+                                    <span class="avatar" style=format!("--hue: {hue}") aria-hidden="true">{initials(&s.name)}</span>
+                                    <span class="char-text">
+                                        <span class="char-name">{s.name.clone()}</span>
+                                        <span class="char-line">{if s.summary.is_empty() { "Not started".to_string() } else { format!("Level {} · {}", s.level, s.summary) }}</span>
+                                        <span class="char-meta">{s.background.clone()}</span>
+                                    </span>
+                                </a>
+                                <div class="char-foot">
+                                    {if pending == 0 {
+                                        view! { <span class="chip ok">{icon("check")}"Ready"</span> }.into_any()
+                                    } else {
+                                        view! { <span class="chip warn">{format!("{pending} to do")}</span> }.into_any()
+                                    }}
+                                    <span class="spacer"></span>
+                                    <a class="button small" href=format!("#/sheet/{id2}")>"Sheet"</a>
+                                    <a class="button small ghost" href=format!("#/edit/{id3}/class")>"Edit"</a>
+                                    <details class="menu">
+                                        <summary class="icon-button" aria-label=format!("More actions for {name}")>"⋯"</summary>
+                                        <div class="menu-list">
+                                            {level_up}
+                                            <button class="menu-item" on:click=move |_| {
+                                                store.update(|all| {
+                                                    if let Some(orig) = all.iter().find(|x| x.id == id4).cloned() {
+                                                        let mut copy = orig;
+                                                        copy.id = store::new_id();
+                                                        copy.name = format!("{} (copy)", copy.name);
+                                                        copy.updated = store::now();
+                                                        all.push(copy);
+                                                    }
+                                                })
+                                            }>"Duplicate"</button>
+                                            <button class="menu-item" on:click=move |_| store::download(&store::file_name(&c_export), &serde_json::to_string_pretty(&c_export).unwrap_or_default())>"Export JSON"</button>
+                                            <button class="menu-item danger" on:click=move |_| {
+                                                let ok = web_sys::window().and_then(|w| w.confirm_with_message(&format!("Delete {name}? This cannot be undone.")).ok()).unwrap_or(false);
+                                                if ok {
+                                                    let id = c.id.clone();
+                                                    store.update(|all| all.retain(|x| x.id != id));
+                                                }
+                                            }>"Delete…"</button>
+                                        </div>
+                                    </details>
+                                </div>
+                            </li>
+                        }
+                    })
+                    .collect_view()}
+            </ul>
+        }
+        .into_any()
     };
 
     let version = comp.data_version.clone();
     view! {
-        <div class="page home">
-            <header class="home-head">
-                <h1>"⚔ 5e Builder"</h1>
-                <p class="muted">"Build, manage and print D&D 5e characters (2024 rules, with legacy options)."</p>
+        <div class="home">
+            <header class="site-head">
+                <a class="brand" href="#/" aria-label="5e Builder home">{logo()}<span class="brand-name" aria-hidden="true">"5e Builder"</span></a>
             </header>
-            <div class="row">
-                <button class="button primary big" on:click=create>"New character"</button>
-                <label class="button ghost">"Import JSON"<input type="file" accept=".json,application/json" class="hidden" on:change=import /></label>
-                <button class="button ghost" disabled=move || store.with(|s| s.is_empty())
-                    on:click=move |_| store::download("characters.json", &serde_json::to_string_pretty(&store.get_untracked()).unwrap_or_default())>"Export all"</button>
-            </div>
-            {move || message.get().map(|m| view! { <p class="note">{m}</p> })}
-            <div class="char-list">{list}</div>
-            <footer class="muted small">{format!("Data: 5etools {version}. Characters are stored in this browser; export them to keep a backup.")}</footer>
+            <main id="main" class="page">
+                <section class="hero">
+                    <h1>"Build, manage and print D&D characters"</h1>
+                    <p class="lede">"A guided builder for the 2024 rules, with legacy options. Every choice is tracked, every number is calculated, and the sheet is ready to print."</p>
+                    <div class="row">
+                        <button class="button primary big" on:click=create>{icon("plus")}"New character"</button>
+                        <label class="button ghost big">{icon("upload")}"Import JSON"<input type="file" accept=".json,application/json" class="visually-hidden" on:change=import /></label>
+                    </div>
+                </section>
+                {move || message.get().map(|m| view! { <p class="note" role="status">{m}</p> })}
+                <section aria-labelledby="chars-title">
+                    <div class="section-head">
+                        <h2 id="chars-title">"Your characters"</h2>
+                        <button class="button ghost small" disabled=move || store.with(|s| s.is_empty())
+                            on:click=move |_| store::download("characters.json", &serde_json::to_string_pretty(&store.get_untracked()).unwrap_or_default())>{icon("download")}"Export all"</button>
+                    </div>
+                    {list}
+                </section>
+            </main>
+            <footer class="site-foot">
+                <p>{format!("Rules data: 5etools {version}. Characters are saved in this browser only — export them to keep a backup.")}</p>
+                <p>"Unofficial fan content. Not approved or endorsed by Wizards of the Coast. Dungeons & Dragons and D&D are trademarks of Wizards of the Coast LLC."</p>
+            </footer>
         </div>
     }
 }

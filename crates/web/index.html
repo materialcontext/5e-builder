@@ -3,11 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>5e Builder</title>
+  <title>5e Builder — D&amp;D character builder and printable sheet</title>
+  <meta name="description" content="Build, manage and print D&amp;D 5e characters with a guided builder for the 2024 rules, including legacy options. Free, private, runs in your browser.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#8c2b1d" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1e1a16" media="(prefers-color-scheme: dark)">
+  <meta property="og:title" content="5e Builder">
+  <meta property="og:description" content="A guided D&amp;D 5e character builder with a print-ready sheet.">
+  <link rel="preload" href="fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/alegreya-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 28 9v14l-12 7-12-7V9z' fill='%238c2b1d'/%3E%3Cpath d='M16 2 28 9 16 13 4 9zM16 13v17M4 9l12 4 12-4M4 23l12-10 12 10' fill='none' stroke='%23fff' stroke-width='1.4'/%3E%3C/svg%3E">
 </head>
 <body>
+  <noscript><p style="padding:2rem;font-family:sans-serif">5e Builder needs JavaScript (WebAssembly) to run.</p></noscript>
   <script type="module">
     import init from './pkg/web.js';
     init();

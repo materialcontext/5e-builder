@@ -26,5 +26,6 @@ if command -v wasm-opt >/dev/null && [ "$PROFILE" = release ]; then
   wasm-opt -Oz -o "$OUT/pkg/web_bg.wasm" "$OUT/pkg/web_bg.wasm"
 fi
 cp crates/web/index.html crates/web/style.css "$OUT/"
+cp -r crates/web/fonts "$OUT/fonts"
 cp crates/web/public/* "$OUT/"
 echo "Built $OUT — serve it with: python3 -m http.server -d $OUT 8080"
