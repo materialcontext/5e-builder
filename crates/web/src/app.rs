@@ -163,6 +163,18 @@ fn Home() -> impl IntoView {
                         <div class="char-actions">
                             <a class="button primary" href=format!("#/sheet/{id2}")>"Sheet"</a>
                             <a class="button ghost" href=format!("#/edit/{id3}/class")>"Edit"</a>
+                            {(s.level < 20 && !c.levels.is_empty()).then(|| {
+                                let id = c.id.clone();
+                                let last = c.levels.last().map(|l| l.class.clone());
+                                view! {
+                                    <button class="button ghost" title="Add a level in your most recent class (change it on the Class step)" on:click=move |_| {
+                                        if let Some(k) = last.clone() {
+                                            store::update(store, &id, |c| c.level_up(k));
+                                            go(Route::Edit(id.clone(), "class".into()));
+                                        }
+                                    }>"Level up"</button>
+                                }
+                            })}
                             <button class="button ghost" on:click=move |_| {
                                 store.update(|all| {
                                     if let Some(orig) = all.iter().find(|x| x.id == id4).cloned() {

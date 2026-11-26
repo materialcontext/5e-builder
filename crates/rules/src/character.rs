@@ -110,6 +110,8 @@ pub enum AbilityMethod {
     #[default]
     PointBuy,
     StandardArray,
+    /// 4d6, drop the lowest die, six times; assign each roll once.
+    Rolled,
     Manual,
 }
 
@@ -119,11 +121,13 @@ pub struct BaseAbilities {
     pub method: AbilityMethod,
     /// Indexed by [`Ability::index`].
     pub scores: [u8; 6],
+    /// The six rolled totals for [`AbilityMethod::Rolled`].
+    pub rolls: Vec<u8>,
 }
 
 impl Default for BaseAbilities {
     fn default() -> Self {
-        BaseAbilities { method: AbilityMethod::PointBuy, scores: [8; 6] }
+        BaseAbilities { method: AbilityMethod::PointBuy, scores: [8; 6], rolls: Vec::new() }
     }
 }
 
@@ -255,6 +259,17 @@ pub fn point_cost(score: u8) -> Option<u8> {
 pub const POINT_BUY_BUDGET: u8 = 27;
 pub const STANDARD_ARRAY: [u8; 6] = [15, 14, 13, 12, 10, 8];
 
+/// Rolls 4d6 and drops the lowest die, six times. `rand` returns values in [0, 1).
+pub fn roll_ability_scores(mut rand: impl FnMut() -> f64) -> Vec<u8> {
+    (0..6)
+        .map(|_| {
+            let mut d: Vec<u8> = (0..4).map(|_| (rand() * 6.0) as u8 + 1).collect();
+            d.sort_unstable();
+            d[1..].iter().sum()
+        })
+        .collect()
+}
+
 /// Validates base scores for the chosen method; returns a problem description.
 pub fn ability_problem(b: &BaseAbilities) -> Option<String> {
     match b.method {
@@ -276,6 +291,16 @@ pub fn ability_problem(b: &BaseAbilities) -> Option<String> {
             let mut a = b.scores;
             a.sort_unstable_by(|x, y| y.cmp(x));
             (a != STANDARD_ARRAY).then(|| "Assign each standard array value (15, 14, 13, 12, 10, 8) once.".into())
+        }
+        AbilityMethod::Rolled => {
+            if b.rolls.len() != 6 {
+                return Some("Roll your ability scores.".into());
+            }
+            let mut want = b.rolls.clone();
+            want.sort_unstable();
+            let mut have = b.scores.to_vec();
+            have.sort_unstable();
+            (want != have).then(|| "Assign each rolled score to one ability.".into())
         }
         AbilityMethod::Manual => b
             .scores

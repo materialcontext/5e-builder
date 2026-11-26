@@ -8,6 +8,7 @@ A D&D 5e character builder, manager and printable character sheet, written in Ru
 - **Printable sheet**: main page, features, spellcasting (with slot boxes) and spell text, equipment and story. Use the browser's *Print → Save as PDF*.
 - **Character manager**: characters live in the browser (localStorage); duplicate, delete, and import/export JSON.
 - **All content** from the 5etools data, with per-source toggles.
+- **Streamlined**: "choose the rest for me" per step and "pick for me" per choice (skills that use your best abilities, bonuses into your class's primary ability), auto-assign scores for your class, 4d6 rolling, undo/redo (Ctrl+Z), "next unfinished", spell-level and feat-category filters, and "new this level" highlights when levelling up.
 
 ## Layout
 
@@ -17,6 +18,8 @@ crates/
                Content is described as Grants (fixed benefits) and Choices.
   importer/    5etools JSON → compendium.json (resolves _copy/_versions,
                flattens {@tags}, parses proficiency/spell/equipment blocks).
+               patches.json adds structured data for mechanics 5etools only
+               describes in prose (e.g. Cleric "Protector", Wizard "Scholar").
   rules/       Pure rules engine: (Character, Compendium) → Build (choices,
                grants, spells, features) → Sheet (AC, HP, saves, attacks…).
   web/         Leptos (client-side) app: manager, wizard, sheet.
@@ -63,16 +66,19 @@ The output in `crates/web/dist` is a static site and can be hosted anywhere.
 cargo test --workspace --exclude web
 ```
 
-The rules tests run against the generated `compendium.json` when present:
-they build characters for every class (levels 1, 5 and 20), every species
+The rules tests run against the generated `compendium.json` when present.
+An audit test checks that every feat/spell/item reference resolves and every
+choice offers enough options; the importer warns about patches that no
+longer match the data. The other tests
+build characters for every class (levels 1, 5 and 20), every species
 and every background and check that each choice can be satisfied, plus
 hand-checked sheets (wizard, fighter, legacy rogue, cleric/wizard multiclass).
 
 ## Known gaps
 
-- Class features whose effects are only described in prose (e.g. most
-  subclass features) appear as text on the sheet; their numbers are not
-  computed. AC, speed and HP handle the common cases (armor, shields,
+- Choices made *during play* (e.g. which damage type an ability uses each
+  time) are not tracked. Features whose effects are only described in prose
+  appear as text on the sheet; their numbers are not computed. AC, speed and HP handle the common cases (armor, shields,
   Unarmored Defense, Draconic Resilience, Fast/Unarmored Movement, Tough,
   Dwarven Toughness, Defense, Alert).
 - Generic magic item variants (e.g. "+1 Longsword") are not generated yet;

@@ -71,6 +71,7 @@ pub struct InventoryLine {
     pub qty: u16,
     pub weight: f32,
     pub equipped: bool,
+    pub attuned: bool,
     pub notes: String,
 }
 
@@ -343,7 +344,7 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
                         .join(", ");
                 }
             }
-            InventoryLine { name: i.name.clone(), qty: i.qty, weight: it.map(|x| x.weight).unwrap_or(0.0) * i.qty as f32, equipped: i.equipped, notes }
+            InventoryLine { name: i.name.clone(), qty: i.qty, weight: it.map(|x| x.weight).unwrap_or(0.0) * i.qty as f32, equipped: i.equipped, attuned: i.attuned, notes }
         })
         .collect();
     let carried_weight = inventory.iter().map(|i| i.weight).sum();

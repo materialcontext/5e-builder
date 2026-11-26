@@ -31,6 +31,7 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
     });
     let search = RwSignal::new(String::new());
     let inspect = RwSignal::new(None::<String>);
+    let group = RwSignal::new(None::<String>);
 
     move || {
         let Some(c) = choice.get() else { return ().into_any() };
@@ -38,13 +39,31 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
         let n = c.picked();
         let done = n >= count;
         let path = c.path.clone();
+        let total_level = ctx.ch.with(|ch| ch.total_level());
+        let is_new = total_level > 1 && c.level == total_level;
+        let p_fill = path.clone();
         let header = view! {
             <div class="choice-head">
                 <div>
                     <span class="choice-label">{c.label.clone()}</span>
                     <span class="choice-origin">{c.origin.clone()}</span>
+                    {is_new.then(|| view! { <span class="badge new">"New this level"</span> })}
                 </div>
-                <span class="counter" class:done=done class:over={n > count}>{format!("{n} / {count}")}</span>
+                <div class="choice-tools">
+                    {(!done).then(|| view! {
+                        <button class="link" title="Pick for me" on:click=move |_| {
+                            let comp = ctx.comp.get_value();
+                            let p = p_fill.clone();
+                            ctx.edit(|ch| {
+                                let b = rules::build(ch, &comp);
+                                if let Some(c) = b.choice(&p).cloned() {
+                                    pick_for(ch, &c, &b, &comp);
+                                }
+                            });
+                        }>"pick for me"</button>
+                    })}
+                    <span class="counter" class:done=done class:over={n > count}>{format!("{n} / {count}")}</span>
+                </div>
             </div>
         };
 
@@ -52,28 +71,83 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
             ability_slots(&c.options, c.selected.clone(), path.clone(), ctx).into_any()
         } else {
             let many = opts.with(|o| o.len()) > 14;
+            let groups: Vec<String> = opts.with(|o| {
+                let mut g: Vec<String> = Vec::new();
+                for x in o.iter().filter_map(|x| x.group.clone()) {
+                    if !g.contains(&x) {
+                        g.push(x);
+                    }
+                }
+                g
+            });
             let selected = c.selected.clone();
+            let chips = (many && n > 0).then(|| {
+                let labels: Vec<(String, String)> = opts.with(|o| {
+                    selected.iter().filter_map(|v| o.iter().find(|x| &x.value == v).map(|x| (v.clone(), x.label.clone()))).collect()
+                });
+                let sel = selected.clone();
+                let p = path.clone();
+                view! {
+                    <div class="chips">
+                        {labels.into_iter().map(|(v, l)| {
+                            let (sel, p) = (sel.clone(), p.clone());
+                            view! {
+                                <button class="chip" title="Remove" on:click=move |_| {
+                                    let next: Vec<String> = sel.iter().filter(|x| **x != v).cloned().collect();
+                                    ctx.edit(|ch| ch.set_choice(&p, next));
+                                }>{l}" ×"</button>
+                            }
+                        }).collect_view()}
+                    </div>
+                }
+            });
+            let group_bar = (many && groups.len() > 1).then(|| {
+                view! {
+                    <div class="group-bar">
+                        <button class="tab small" class:active=move || group.get().is_none() on:click=move |_| group.set(None)>"All"</button>
+                        {groups.into_iter().map(|g| {
+                            let g2 = g.clone();
+                            let g3 = g.clone();
+                            view! { <button class="tab small" class:active=move || group.get().as_deref() == Some(g2.as_str()) on:click=move |_| group.set(Some(g3.clone()))>{g}</button> }
+                        }).collect_view()}
+                    </div>
+                }
+            });
             let p2 = path.clone();
             let list = move || {
                 let q = search.get().to_lowercase();
+                let g = group.get();
                 let selected = selected.clone();
                 opts.get()
                     .into_iter()
-                    .filter(|o| q.is_empty() || o.label.to_lowercase().contains(&q) || o.detail.to_lowercase().contains(&q) || selected.contains(&o.value))
+                    .filter(|o| g.is_none() || o.group == g)
+                    .filter(|o| q.is_empty() || o.label.to_lowercase().contains(&q) || o.detail.to_lowercase().contains(&q))
                     .map(|o| option_row(o, &selected, count, p2.clone(), inspect, ctx))
                     .collect_view()
             };
             view! {
+                {chips}
                 {many.then(|| view! {
                     <input class="search" type="search" placeholder="Search…"
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev)) />
                 })}
+                {group_bar}
                 <div class="options" class:scroll=many>{list}</div>
             }
             .into_any()
         };
-        view! { <section class="choice" class:complete=done>{header}{body}</section> }.into_any()
+        view! { <section class="choice" class:complete=done class:fresh=is_new>{header}{body}</section> }.into_any()
+    }
+}
+
+/// Fills one choice with suggested picks (same heuristics as "choose the rest").
+fn pick_for(ch: &mut rules::Character, c: &rules::ChoiceState, _b: &rules::Build, comp: &compendium::Compendium) {
+    // Run the suggester restricted to this choice's step, but only keep this choice.
+    let mut trial = ch.clone();
+    rules::suggest::fill(&mut trial, comp, Some(c.step));
+    if let Some(v) = trial.choices.get(&c.path).cloned() {
+        ch.set_choice(&c.path, v);
     }
 }
 

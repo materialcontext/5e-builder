@@ -10,6 +10,7 @@ pub mod character;
 pub mod options;
 pub mod sheet;
 pub mod spellcasting;
+pub mod suggest;
 
 pub use build::{build, Build, ChoiceState, Step};
 pub use character::*;
@@ -65,6 +66,10 @@ pub fn issues(ch: &Character, b: &Build, comp: &Compendium) -> Vec<Issue> {
         if !ch.settings.average_hp && l.hp_roll.is_none() {
             push(Step::Class, format!("Roll hit points for level {}.", i + 1));
         }
+    }
+    let attuned = ch.inventory.iter().filter(|i| i.attuned).count();
+    if attuned > 3 {
+        push(Step::Equipment, format!("Attuned to {attuned} items; the limit is 3."));
     }
     if ch.name.trim().is_empty() {
         push(Step::Details, "Give your character a name.".into());

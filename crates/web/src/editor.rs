@@ -18,11 +18,80 @@ pub struct EditorCtx {
     pub id: StoredValue<String>,
     pub ch: Memo<Character>,
     pub build: Memo<Build>,
+    pub history: RwSignal<History>,
+}
+
+/// Undo/redo snapshots. Rapid edits (typing) coalesce into one step.
+#[derive(Clone, Default)]
+pub struct History {
+    undo: Vec<Character>,
+    redo: Vec<Character>,
+    last: f64,
 }
 
 impl EditorCtx {
     pub fn edit(&self, f: impl FnOnce(&mut Character)) {
+        let before = self.ch.get_untracked();
+        let now = js_sys::Date::now();
+        self.history.update(|h| {
+            if now - h.last > 700.0 {
+                h.undo.push(before);
+                if h.undo.len() > 100 {
+                    h.undo.remove(0);
+                }
+            }
+            h.last = now;
+            h.redo.clear();
+        });
         store::update(self.store, &self.id.get_value(), f);
+    }
+
+    fn restore(&self, c: Character) {
+        let id = self.id.get_value();
+        self.store.update(|all| {
+            if let Some(x) = all.iter_mut().find(|x| x.id == id) {
+                *x = c;
+                x.updated = store::now();
+            }
+        });
+    }
+
+    pub fn undo(&self) {
+        let cur = self.ch.get_untracked();
+        let mut prev = None;
+        self.history.update(|h| {
+            prev = h.undo.pop();
+            if prev.is_some() {
+                h.redo.push(cur);
+                h.last = 0.0;
+            }
+        });
+        if let Some(p) = prev {
+            self.restore(p);
+        }
+    }
+
+    pub fn redo(&self) {
+        let cur = self.ch.get_untracked();
+        let mut next = None;
+        self.history.update(|h| {
+            next = h.redo.pop();
+            if next.is_some() {
+                h.undo.push(cur);
+                h.last = 0.0;
+            }
+        });
+        if let Some(n) = next {
+            self.restore(n);
+        }
+    }
+
+    /// Fills pending choices (of one step, or all) with suggested picks.
+    pub fn fill(&self, step: Option<Step>) {
+        let comp = self.comp.get_value();
+        self.edit(|c| {
+            rules::suggest::fill(c, &comp, step);
+        });
     }
 }
 
@@ -58,8 +127,22 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
     let ch = Memo::new(move |_| store.with(|s| s.iter().find(|c| c.id == id_v.get_value()).cloned().unwrap_or_default()));
     let c2 = comp.clone();
     let build = Memo::new(move |_| ch.with(|c| rules::build(c, &c2)));
-    let ctx = EditorCtx { comp: StoredValue::new(comp.clone()), store, id: id_v, ch, build };
+    let ctx = EditorCtx { comp: StoredValue::new(comp.clone()), store, id: id_v, ch, build, history: RwSignal::new(History::default()) };
     provide_context(ctx);
+    let keys = window_event_listener(leptos::ev::keydown, move |ev| {
+        let mac_or_ctrl = ev.ctrl_key() || ev.meta_key();
+        if mac_or_ctrl && ev.key().eq_ignore_ascii_case("z") {
+            let in_text = ev
+                .target()
+                .and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok())
+                .is_some_and(|e| matches!(e.tag_name().as_str(), "INPUT" | "TEXTAREA"));
+            if !in_text {
+                ev.prevent_default();
+                if ev.shift_key() { ctx.redo() } else { ctx.undo() }
+            }
+        }
+    });
+    on_cleanup(move || keys.remove());
 
     let c3 = comp.clone();
     let issues = Memo::new(move |_| ch.with(|c| build.with(|b| rules::issues(c, b, &c3))));
@@ -121,6 +204,8 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
                     <strong>{move || { let n = ch.with(|c| c.name.clone()); if n.is_empty() { "New character".to_string() } else { n } }}</strong>
                     <span class="muted">{move || ch.with(|c| build.with(|b| rules::sheet(c, b, &c5).summary))}</span>
                 </div>
+                <button class="button ghost icon" title="Undo (Ctrl+Z)" disabled=move || ctx.history.with(|h| h.undo.is_empty()) on:click=move |_| ctx.undo()>"↶"</button>
+                <button class="button ghost icon" title="Redo (Ctrl+Shift+Z)" disabled=move || ctx.history.with(|h| h.redo.is_empty()) on:click=move |_| ctx.redo()>"↷"</button>
                 <a class="button" href=sheet_href>"Sheet & print"</a>
             </header>
             <nav class="steps">{nav}</nav>
@@ -128,6 +213,14 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
             <footer class="step-foot">
                 {prev.map(|h| view! { <a class="button ghost" href=h>"← Back"</a> })}
                 <span class="spacer"></span>
+                {move || {
+                    let iss = issues.get();
+                    let target = STEPS.iter().position(|(s, _)| iss.iter().any(|i| i.step == *s))?;
+                    (target != current).then(|| {
+                        let href = format!("#/edit/{}/{}", id_v.get_value(), step_slug(target));
+                        view! { <a class="button ghost" href=href title="Go to the first step with something left to do">"Next unfinished"</a> }
+                    })
+                }}
                 {next.map(|h| view! { <a class="button primary" href=h>"Next →"</a> })}
             </footer>
         </div>
@@ -142,7 +235,17 @@ fn StepChoices(step: Step, #[prop(optional)] filter: Option<fn(&rules::ChoiceSta
     let paths = Memo::new(move |_| {
         ctx.build.with(|b| b.choices.iter().filter(|c| c.step == step && filter.is_none_or(|f| f(c))).map(|c| c.path.clone()).collect::<Vec<_>>())
     });
+    let pending = Memo::new(move |_| {
+        ctx.build.with(|b| b.choices.iter().filter(|c| c.step == step && filter.is_none_or(|f| f(c)) && !c.is_complete()).count())
+    });
     view! {
+        <Show when=move || { pending.get() > 1 }>
+            <div class="fill-bar">
+                <span>{move || format!("{} choices left here.", pending.get())}</span>
+                <button class="button ghost" on:click=move |_| ctx.fill(Some(step))
+                    title="Picks sensible options for every unfinished choice on this step. You can change them afterwards.">"✨ Choose the rest for me"</button>
+            </div>
+        </Show>
         <For each=move || paths.get() key=|p| p.clone() children=move |p| view! { <ChoicePicker path=p /> } />
     }
 }
@@ -320,7 +423,7 @@ fn ClassStep() -> impl IntoView {
                 </div>
                 <p>
                     {format!("Hit die d{} · Saves: {}", class.hit_die, class.saves.iter().map(|a| a.name()).collect::<Vec<_>>().join(", "))}
-                    {class.multiclass_req.clone().filter(|r| !r.is_empty()).map(|r| format!(" · Multiclass requirement: {r}"))}
+                    {(!class.multiclass_abilities.is_empty()).then(|| format!(" · Multiclassing: {}", class.multiclass_abilities.iter().map(|g| g.iter().map(|(a, n)| format!("{} {n}", a.abbr())).collect::<Vec<_>>().join(" or ")).collect::<Vec<_>>().join(", ")))}
                 </p>
                 <details>
                     <summary>"Class features by level"</summary>
@@ -551,7 +654,7 @@ fn AbilitiesStep() -> impl IntoView {
             c.abilities.method = m;
             c.abilities.scores = match m {
                 AbilityMethod::PointBuy => [8; 6],
-                AbilityMethod::StandardArray => [0; 6],
+                AbilityMethod::StandardArray | AbilityMethod::Rolled => [0; 6],
                 AbilityMethod::Manual => c.abilities.scores.map(|s| if s == 0 { 10 } else { s }),
             };
         })
@@ -560,7 +663,7 @@ fn AbilitiesStep() -> impl IntoView {
     let problem = move || ctx.ch.with(|c| rules::ability_problem(&c.abilities));
 
     let rows = move || {
-        let (base, m) = ctx.ch.with(|c| (c.abilities.scores, c.abilities.method));
+        let (base, m, rolls) = ctx.ch.with(|c| (c.abilities.scores, c.abilities.method, c.abilities.rolls.clone()));
         let bonuses: Vec<(Ability, i8, String)> = ctx.build.with(|b| {
             b.grants
                 .iter()
@@ -586,13 +689,17 @@ fn AbilitiesStep() -> impl IntoView {
                         </div>
                     }
                     .into_any(),
-                    AbilityMethod::StandardArray => {
+                    AbilityMethod::StandardArray | AbilityMethod::Rolled => {
+                        let pool: Vec<u8> = if m == AbilityMethod::Rolled { rolls.clone() } else { rules::STANDARD_ARRAY.to_vec() };
+                        let mut values = pool.clone();
+                        values.sort_unstable_by(|a, b| b.cmp(a));
+                        values.dedup();
                         let used: Vec<u8> = base.iter().enumerate().filter(|(j, _)| *j != i).map(|(_, v)| *v).collect();
                         view! {
-                            <select on:change=move |ev| { let v: u8 = event_target_value(&ev).parse().unwrap_or(0); ctx.edit(|c| c.abilities.scores[i] = v) }>
+                            <select disabled=pool.is_empty() on:change=move |ev| { let v: u8 = event_target_value(&ev).parse().unwrap_or(0); ctx.edit(|c| c.abilities.scores[i] = v) }>
                                 <option value="0" selected=base[i] == 0>"—"</option>
-                                {rules::STANDARD_ARRAY.iter().map(|&v| {
-                                    let taken = used.iter().filter(|u| **u == v).count() >= rules::STANDARD_ARRAY.iter().filter(|x| **x == v).count();
+                                {values.iter().map(|&v| {
+                                    let taken = used.iter().filter(|u| **u == v).count() >= pool.iter().filter(|x| **x == v).count();
                                     view! { <option value=v.to_string() selected=base[i] == v disabled=taken && base[i] != v>{v}</option> }
                                 }).collect_view()}
                             </select>
@@ -625,8 +732,26 @@ fn AbilitiesStep() -> impl IntoView {
         <div class="tabs">
             {tab(AbilityMethod::PointBuy, "Point buy")}
             {tab(AbilityMethod::StandardArray, "Standard array")}
-            {tab(AbilityMethod::Manual, "Manual / rolled")}
+            {tab(AbilityMethod::Rolled, "Roll 4d6")}
+            {tab(AbilityMethod::Manual, "Manual")}
         </div>
+        <Show when=move || method() == AbilityMethod::Rolled>
+            <div class="row">
+                <button class="button" on:click=move |_| {
+                    let rolls = rules::roll_ability_scores(js_sys::Math::random);
+                    ctx.edit(|c| { c.abilities.rolls = rolls; c.abilities.scores = [0; 6]; });
+                }>{move || if ctx.ch.with(|c| c.abilities.rolls.is_empty()) { "🎲 Roll six scores" } else { "🎲 Reroll" }}</button>
+                <span class="rolls">{move || ctx.ch.with(|c| c.abilities.rolls.iter().map(|r| r.to_string()).collect::<Vec<_>>().join(" · "))}</span>
+            </div>
+        </Show>
+        <Show when=move || method() != AbilityMethod::Manual>
+            <div class="row">
+                <button class="button ghost" on:click=move |_| {
+                    let comp = ctx.comp.get_value();
+                    ctx.edit(|c| auto_assign(c, &comp));
+                } title="Highest scores go to your class's primary abilities, then Constitution.">"Assign for my class"</button>
+            </div>
+        </Show>
         <Show when=move || method() == AbilityMethod::PointBuy>
             <p class="points">{move || format!("{} / {} points spent", spent(), rules::POINT_BUY_BUDGET)}</p>
         </Show>
@@ -640,6 +765,27 @@ fn AbilitiesStep() -> impl IntoView {
         <h3>"Ability score increases"</h3>
         <StepChoices step=Step::Background filter=is_ability_choice />
         <StepChoices step=Step::Species filter=is_ability_choice />
+    }
+}
+
+/// Puts the highest available scores into the class's primary abilities, then CON, DEX, WIS.
+fn auto_assign(c: &mut Character, comp: &Compendium) {
+    let mut pool: Vec<u8> = match c.abilities.method {
+        AbilityMethod::Rolled => c.abilities.rolls.clone(),
+        _ => rules::STANDARD_ARRAY.to_vec(),
+    };
+    if pool.len() != 6 {
+        return;
+    }
+    pool.sort_unstable_by(|a, b| b.cmp(a));
+    let mut order: Vec<Ability> = c.levels.first().and_then(|l| comp.classes.get(&l.class)).map(|x| x.primary.clone()).unwrap_or_default();
+    for a in [Ability::Con, Ability::Dex, Ability::Wis, Ability::Str, Ability::Cha, Ability::Int] {
+        if !order.contains(&a) {
+            order.push(a);
+        }
+    }
+    for (a, v) in order.into_iter().zip(pool) {
+        c.abilities.scores[a.index()] = v;
     }
 }
 
@@ -730,12 +876,13 @@ fn EquipmentStep() -> impl IntoView {
     };
     let inventory = move || {
         let inv = ctx.ch.with(|c| c.inventory.clone());
+        let attuned = inv.iter().filter(|i| i.attuned).count();
         if inv.is_empty() {
             return view! { <p class="muted">"Inventory is empty. Choose starting equipment above or add items."</p> }.into_any();
         }
         view! {
             <table class="inventory">
-                <thead><tr><th>"Item"</th><th>"Qty"</th><th>"Equipped"</th><th></th></tr></thead>
+                <thead><tr><th>"Item"</th><th>"Qty"</th><th>"Equipped"</th><th>"Attuned"</th><th></th></tr></thead>
                 <tbody>
                     {inv.into_iter().enumerate().map(|(i, it)| view! {
                         <tr>
@@ -743,11 +890,15 @@ fn EquipmentStep() -> impl IntoView {
                             <td><input class="num" type="number" min="1" prop:value=it.qty.to_string()
                                 on:change=move |ev| { let q: u16 = event_target_value(&ev).parse().unwrap_or(1); ctx.edit(|c| { c.inventory[i].qty = q.max(1); c.inventory[i].starting = false; }) } /></td>
                             <td><input type="checkbox" prop:checked=it.equipped on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.inventory[i].equipped = on) } /></td>
+                            <td>{it.item.as_ref().and_then(|k| ctx.comp.get_value().items.get(k).map(|x| x.attunement)).unwrap_or(false).then(|| view! {
+                                <input type="checkbox" prop:checked=it.attuned on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.inventory[i].attuned = on) } />
+                            })}</td>
                             <td><button class="link" on:click=move |_| ctx.edit(|c| { c.inventory.remove(i); })>"remove"</button></td>
                         </tr>
                     }).collect_view()}
                 </tbody>
             </table>
+            {(attuned > 0).then(|| view! { <p class="muted small" class:over-limit={attuned > 3}>{format!("Attuned to {attuned} of 3 items.")}</p> })}
         }
         .into_any()
     };
@@ -815,8 +966,15 @@ fn DetailsStep() -> impl IntoView {
         <label class="field big"><span>"Character name"</span>
             <input type="text" prop:value=move || ctx.ch.with(|c| c.name.clone()) on:input=move |ev| { let v = event_target_value(&ev); ctx.edit(|c| c.name = v) } />
         </label>
+        <datalist id="alignments">
+            {["Lawful Good", "Neutral Good", "Chaotic Good", "Lawful Neutral", "Neutral", "Chaotic Neutral", "Lawful Evil", "Neutral Evil", "Chaotic Evil", "Unaligned"]
+                .into_iter().map(|a| view! { <option value=a></option> }).collect_view()}
+        </datalist>
         <div class="field-grid">
-            {field("Alignment", |d| d.alignment.clone(), |d, v| d.alignment = v)}
+            <label class="field"><span>"Alignment"</span>
+                <input type="text" list="alignments" prop:value=move || ctx.ch.with(|c| c.details.alignment.clone())
+                    on:input=move |ev| { let v = event_target_value(&ev); ctx.edit(|c| c.details.alignment = v) } />
+            </label>
             {field("Pronouns", |d| d.pronouns.clone(), |d, v| d.pronouns = v)}
             {field("Age", |d| d.age.clone(), |d, v| d.age = v)}
             {field("Height", |d| d.height.clone(), |d, v| d.height = v)}

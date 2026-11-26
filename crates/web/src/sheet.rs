@@ -18,6 +18,7 @@ pub fn SheetPage(id: String) -> impl IntoView {
     };
     let full_spells = RwSignal::new(true);
     let full_features = RwSignal::new(true);
+    let a4 = RwSignal::new(false);
     let b = rules::build(&ch, &comp);
     let s = rules::sheet(&ch, &b, &comp);
     let pending = rules::issues(&ch, &b, &comp).len();
@@ -33,8 +34,10 @@ pub fn SheetPage(id: String) -> impl IntoView {
             <span class="spacer"></span>
             <label class="toggle small"><input type="checkbox" prop:checked=move || full_features.get() on:change=move |ev| full_features.set(event_target_checked(&ev)) />"Feature text"</label>
             <label class="toggle small"><input type="checkbox" prop:checked=move || full_spells.get() on:change=move |ev| full_spells.set(event_target_checked(&ev)) />"Spell descriptions"</label>
+            <label class="toggle small"><input type="checkbox" prop:checked=move || a4.get() on:change=move |ev| a4.set(event_target_checked(&ev)) />"A4"</label>
             <button class="button primary" on:click=move |_| { if let Some(w) = web_sys::window() { let _ = w.print(); } }>"Print / Save PDF"</button>
         </div>
+        {move || view! { <style>{if a4.get() { "@page { size: A4; margin: 0; } .sheet .page { width: 210mm; }" } else { "@page { size: letter; margin: 0; }" }}</style> }}
         <div class="sheet">
             {main_page(&ch, &s)}
             {move || features_page(&s2, full_features.get())}
@@ -293,7 +296,7 @@ fn story_page(ch: &Character, s: &Sheet) -> impl IntoView {
         .map(|i| {
             view! {
                 <tr>
-                    <td>{if i.equipped { "●" } else { "" }}</td>
+                    <td>{if i.equipped { "●" } else { "" }}{if i.attuned { "Ⓐ" } else { "" }}</td>
                     <td>{i.name.clone()}{(!i.notes.is_empty()).then(|| view! { <div class="small muted">{i.notes.clone()}</div> })}</td>
                     <td class="c">{i.qty}</td>
                     <td class="c">{if i.weight > 0.0 { format!("{}", i.weight) } else { String::new() }}</td>

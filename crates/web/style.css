@@ -178,6 +178,20 @@ summary { cursor: pointer; font-weight: 600; }
 .ability-slot { display: flex; align-items: center; gap: .6rem; margin: .3rem 0; }
 .ability-slot .amount { font-weight: 700; width: 2.2rem; text-align: right; }
 
+/* streamlining */
+.fill-bar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .5rem .8rem;
+  background: var(--accent-soft); border-radius: var(--radius); margin: .5rem 0; }
+.choice-tools { display: flex; align-items: center; gap: .5rem; }
+.choice.fresh { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.badge.new { background: var(--accent); color: var(--accent-ink); }
+.chips { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
+.chip { border: 1px solid var(--accent); background: var(--accent-soft); color: var(--ink); border-radius: 99px; padding: .1rem .6rem; font: inherit; font-size: .82rem; cursor: pointer; }
+.group-bar { display: flex; flex-wrap: wrap; gap: .25rem; margin-bottom: .5rem; }
+.tab.small { padding: .2rem .6rem; font-size: .8rem; }
+.button.icon { padding: .45rem .7rem; font-size: 1.05rem; }
+.rolls { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .03em; }
+.over-limit { color: #a33 !important; font-weight: 600; }
+
 /* abilities */
 .table-wrap { overflow-x: auto; border-radius: var(--radius); }
 table.abilities { border-collapse: collapse; width: 100%; background: var(--panel); border-radius: var(--radius); overflow: hidden; }

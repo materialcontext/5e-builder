@@ -18,11 +18,13 @@ pub struct OptionItem {
     pub warning: Option<String>,
     /// Longer description shown on demand.
     pub body: Vec<Entry>,
+    /// Filter group for long lists (spell level, feat category, ...).
+    pub group: Option<String>,
 }
 
 impl OptionItem {
     fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
-        OptionItem { value: value.into(), label: label.into(), detail: String::new(), disabled: None, warning: None, body: vec![] }
+        OptionItem { value: value.into(), label: label.into(), detail: String::new(), disabled: None, warning: None, body: vec![], group: None }
     }
     fn detail(mut self, d: impl Into<String>) -> Self {
         self.detail = d.into();
@@ -356,6 +358,7 @@ fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Com
                 _ => format!("{} · {}", f.category_label(), f.source),
             };
             let mut o = OptionItem::new(f.key.0.clone(), f.name.clone()).detail(detail).body(f.body.clone());
+            o.group = Some(f.category_label().to_string());
             if taken.contains(&f.key) && !f.repeatable {
                 o.disabled = Some("Already taken".into());
             } else if let Some(p) = &f.prereq {
@@ -419,6 +422,7 @@ fn spell_options(filter: &SpellFilter, choice: &ChoiceState, build: &Build, ch: 
             let mut o = OptionItem::new(s.key.0.clone(), s.name.clone())
                 .detail(format!("{lvl} · {}{}", s.school_name(), if s.ritual { " · Ritual" } else { "" }))
                 .body(s.body.clone());
+            o.group = Some(lvl.clone());
             if let Some(k) = others.iter().find(|k| k.key == s.key) {
                 if k.class.is_some() && k.class == choice.class {
                     o.disabled = Some("Already known".into());

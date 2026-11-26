@@ -41,7 +41,7 @@ pub fn autofill(ch: &mut Character, comp: &Compendium) {
 fn hero(class: &str, background: &str, species: &str) -> Character {
     let mut ch = Character::new("t");
     ch.name = "Test".into();
-    ch.abilities = BaseAbilities { method: AbilityMethod::StandardArray, scores: [8, 14, 13, 15, 12, 10] };
+    ch.abilities = BaseAbilities { method: AbilityMethod::StandardArray, scores: [8, 14, 13, 15, 12, 10], rolls: vec![] };
     ch.set_starting_class(Key(class.into()));
     ch.set_background(Some(Key(background.into())));
     ch.set_species(Some(Key(species.into())));
@@ -177,7 +177,7 @@ fn formula_eval() {
 
 #[test]
 fn point_buy_validation() {
-    let mut b = BaseAbilities { method: AbilityMethod::PointBuy, scores: [15, 15, 15, 8, 8, 8] };
+    let mut b = BaseAbilities { method: AbilityMethod::PointBuy, scores: [15, 15, 15, 8, 8, 8], rolls: vec![] };
     assert!(ability_problem(&b).is_none());
     b.scores[3] = 9;
     assert!(ability_problem(&b).is_some());
@@ -191,7 +191,7 @@ fn every_class_and_species_resolves() {
     for class in comp.classes.iter() {
         for lvl in [1u8, 5, 20] {
             let mut ch = hero(&class.key.0, "acolyte|phb", "human|phb");
-            ch.abilities = BaseAbilities { method: AbilityMethod::Manual, scores: [13; 6] };
+            ch.abilities = BaseAbilities { method: AbilityMethod::Manual, scores: [13; 6], rolls: vec![] };
             ch.set_starting_level(lvl);
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| autofill(&mut ch, comp)));
             if r.is_err() {
@@ -409,10 +409,33 @@ fn manual_inventory_edits_survive() {
 fn multiclass_requirements_checked() {
     let Some(comp) = comp() else { return };
     let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
-    ch.abilities = BaseAbilities { method: AbilityMethod::Manual, scores: [15, 10, 14, 8, 12, 10] };
+    ch.abilities = BaseAbilities { method: AbilityMethod::Manual, scores: [15, 10, 14, 8, 12, 10], rolls: vec![] };
     ch.level_up(Key("wizard|xphb".into()));
     autofill(&mut ch, comp);
     let b = build(&ch, comp);
     let iss = issues(&ch, &b, comp);
     assert!(iss.iter().any(|i| i.text.contains("Wizard requires INT 13")), "{iss:?}");
+}
+
+#[test]
+fn suggestions_complete_a_character_sensibly() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("wizard|xphb", "sage|xphb", "elf|xphb");
+    let n = suggest::fill(&mut ch, comp, None);
+    assert!(n > 5);
+    let b = build(&ch, comp);
+    assert_eq!(b.pending().count(), 0);
+    // Background bonus goes to Intelligence (the wizard's primary ability).
+    assert!(b.score(Ability::Int) >= 16, "{:?}", b.scores);
+    assert!(issues(&ch, &b, comp).is_empty());
+}
+
+#[test]
+fn rolled_scores() {
+    let mut seq = [0.99, 0.0, 0.5, 0.99].iter().cycle().copied();
+    let r = roll_ability_scores(|| seq.next().unwrap());
+    assert_eq!(r.len(), 6);
+    assert!(r.iter().all(|&x| (3..=18).contains(&x)));
+    let b = BaseAbilities { method: AbilityMethod::Rolled, scores: [r[0], r[1], r[2], r[3], r[4], r[5]], rolls: r.clone() };
+    assert!(ability_problem(&b).is_none());
 }
