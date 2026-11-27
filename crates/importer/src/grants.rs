@@ -498,7 +498,16 @@ pub fn equipment(v: Option<&Value>, id: &str) -> Vec<Grant> {
 
 pub fn prereq(v: Option<&Value>) -> Option<Prereq> {
     let alts = v.and_then(Value::as_array)?;
-    let first = alts.first()?.as_object()?;
+    let objs: Vec<&Obj> = alts.iter().filter_map(Value::as_object).collect();
+    let mut p = prereq_one(objs.first()?);
+    p.alternatives = objs[1..].iter().map(|o| prereq_one(o)).collect();
+    let texts: Vec<String> = objs.iter().map(|o| prereq_text(o)).filter(|s| !s.is_empty()).collect();
+    p.text = texts.join("; or ");
+    Some(p)
+}
+
+/// One way of meeting a prerequisite (every field must hold).
+fn prereq_one(first: &Obj) -> Prereq {
     let mut p = Prereq::default();
     p.level = match first.get("level") {
         Some(Value::Number(n)) => n.as_u64().map(|x| x as u8),
@@ -542,9 +551,8 @@ pub fn prereq(v: Option<&Value>) -> Option<Prereq> {
     p.spellcasting = first.contains_key("spellcasting");
     p.spellcasting_feature =
         first.contains_key("spellcasting2020") || first.contains_key("spellcastingFeature") || first.contains_key("spellcastingPrepared");
-    let texts: Vec<String> = alts.iter().filter_map(Value::as_object).map(prereq_text).filter(|s| !s.is_empty()).collect();
-    p.text = texts.join("; or ");
-    Some(p)
+    p.text = prereq_text(first);
+    p
 }
 
 fn prereq_text(o: &Obj) -> String {

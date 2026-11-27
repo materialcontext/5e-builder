@@ -352,8 +352,18 @@ pub fn prereq_problem(p: &Prereq, build: &Build, ch: &Character) -> Option<Strin
     prereq_problem_in(p, build, ch, None)
 }
 
-/// Checks a prerequisite; `comp` enables name-based checks (species, spells, classes).
+/// Checks a prerequisite; `comp` enables name-based checks (species, spells,
+/// classes). Met if the main requirements or any one alternative holds.
 pub fn prereq_problem_in(p: &Prereq, build: &Build, ch: &Character, comp: Option<&Compendium>) -> Option<String> {
+    let problem = prereq_one_problem(p, build, ch, comp)?;
+    if p.alternatives.iter().any(|alt| prereq_one_problem(alt, build, ch, comp).is_none()) {
+        return None;
+    }
+    // None of the ways is met: name them all.
+    Some(if p.alternatives.is_empty() || p.text.is_empty() { problem } else { format!("Requires {}", p.text) })
+}
+
+fn prereq_one_problem(p: &Prereq, build: &Build, ch: &Character, comp: Option<&Compendium>) -> Option<String> {
     if let Some(l) = p.level {
         match (&p.level_class, comp) {
             (Some(class), Some(comp)) => {
@@ -614,7 +624,7 @@ pub fn feat_facets(f: &Feat, comp: &Compendium) -> Vec<(String, String)> {
                 any = true;
                 tag("Prerequisite", v);
             };
-            if !p.abilities.is_empty() {
+            if !p.abilities.is_empty() || p.alternatives.iter().any(|a| !a.abilities.is_empty()) {
                 req("Ability score");
             }
             if p.level.is_some() {

@@ -937,3 +937,25 @@ fn other_language_means_the_full_list() {
     values.dedup();
     assert_eq!(n, values.len(), "each language once");
 }
+
+#[test]
+fn any_alternative_prerequisite_qualifies() {
+    let Some(comp) = comp() else { return };
+    let check = |scores: [u8; 6], feat: &str| {
+        let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+        ch.abilities = BaseAbilities { method: AbilityMethod::Manual, scores, rolls: vec![] };
+        for _ in 1..4 {
+            ch.level_up(Key("fighter|xphb".into()));
+        }
+        let b = build(&ch, comp);
+        let p = comp.feats.get(&Key(feat.into())).unwrap().prereq.clone().unwrap();
+        crate::options::prereq_problem_in(&p, &b, &ch, Some(comp))
+    };
+    // 2024 Ritual Caster: Intelligence, Wisdom or Charisma 13 (and level 4).
+    assert_eq!(check([10, 10, 10, 8, 8, 14], "ritual caster|xphb"), None, "Charisma 13 qualifies");
+    assert_eq!(check([10, 10, 10, 8, 14, 8], "ritual caster|xphb"), None, "Wisdom 13 qualifies");
+    let none = check([14, 10, 10, 8, 8, 8], "ritual caster|xphb").expect("no qualifying score");
+    assert!(none.contains("Charisma") && none.contains("Intelligence"), "names every way: {none}");
+    // Athlete: Strength or Dexterity 13.
+    assert_eq!(check([8, 14, 10, 8, 8, 8], "athlete|xphb"), None, "Dexterity 13 qualifies");
+}

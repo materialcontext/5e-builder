@@ -132,6 +132,11 @@ pub struct Prereq {
     pub spellcasting_feature: bool,
     /// Human readable summary of all prerequisites.
     pub text: String,
+    /// Other ways to qualify: meeting any one of these instead of the fields
+    /// above also satisfies the prerequisite (5etools lists alternatives,
+    /// e.g. Ritual Caster: Intelligence, Wisdom or Charisma 13).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<Prereq>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
