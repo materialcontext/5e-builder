@@ -108,12 +108,14 @@ pub fn SheetPage(id: String) -> impl IntoView {
 }
 
 /// A full page in the sheet's style holding flowing text.
-fn text_page(title: String, label: &'static str, body: AnyView) -> impl IntoView {
+/// `columns`: flow text in two columns. Pages made of tables use one column,
+/// because a table can't break across columns or, inside columns, pages.
+fn text_page(title: String, label: &'static str, body: AnyView, columns: bool) -> impl IntoView {
     view! {
         <section class="page rp-page rp-text-page" aria-label=label>
             <div class="rp-panel">
                 <h2 class="rp-title">{title}</h2>
-                <div class="rp-columns">{body}</div>
+                <div class:rp-columns=columns class:rp-single=!columns>{body}</div>
             </div>
         </section>
     }
@@ -160,6 +162,7 @@ fn features_page(s: &Sheet) -> impl IntoView {
         format!("{} — Features & Traits", s.name),
         "Features and traits",
         sections.into_any(),
+        true,
     )
 }
 
@@ -187,6 +190,7 @@ fn spell_text_page(s: &Sheet) -> impl IntoView {
         format!("{} — Spell Descriptions", s.name),
         "Spell descriptions",
         items.into_any(),
+        true,
     )
     .into_any()
 }
@@ -273,5 +277,6 @@ fn continuation_page(s: &Sheet, of: Overflow) -> impl IntoView {
         format!("{} — Continued", s.name),
         "Continuation page",
         body.into_any(),
+        false,
     )
 }

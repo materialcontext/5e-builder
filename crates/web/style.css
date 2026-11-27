@@ -556,7 +556,13 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .rp-flow p { margin: 0 0 calc(2 * var(--u)); }
 .rp-flow .tag { font-style: italic; color: #5f5c5c; font-size: .85em; }
 .rp-list { margin: 0; padding-left: calc(12 * var(--u)); }
+/* Tables can't split across columns: give each table section the full page
+   width (its heading stays on top) and let long tables continue on the next
+   printed page with their column headings repeated. */
+.rp-single .rp-group { margin-bottom: calc(8 * var(--u)); }
 .rp-table { width: 100%; border-collapse: collapse; font-size: calc(7.6 * var(--u)); break-inside: auto; }
+.rp-table thead { display: table-header-group; }
+.rp-table tr { break-inside: avoid; }
 .rp-table th { text-align: left; font-weight: 400; color: #6d6e71; border-bottom: calc(.5 * var(--u)) solid #b2b1b1; padding: calc(1 * var(--u)) calc(3 * var(--u)); }
 .rp-table td { border-bottom: calc(.5 * var(--u)) solid #b2b1b1; padding: calc(2 * var(--u)) calc(3 * var(--u)); vertical-align: top; }
 .rp-table .c { text-align: center; }
