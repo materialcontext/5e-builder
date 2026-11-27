@@ -7,6 +7,8 @@
 pub mod audit;
 pub mod build;
 pub mod character;
+pub mod browse;
+pub mod explain;
 pub mod options;
 pub mod sheet;
 pub mod spellcasting;

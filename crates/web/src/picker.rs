@@ -67,11 +67,7 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
         let Some(c) = choice.get() else { return vec![] };
         ctx.build.with(|b| ctx.ch.with(|ch| rules::options(&c, b, ch, &comp)))
     });
-    let search = RwSignal::new(String::new());
-    let inspect = RwSignal::new(None::<String>);
-    let group = RwSignal::new(None::<String>);
-    let facet_sel = RwSignal::new(BTreeMap::<String, BTreeSet<String>>::new());
-    let only_available = RwSignal::new(false);
+    let state = ListState::new();
 
     move || {
         let Some(c) = choice.get() else { return ().into_any() };
@@ -114,84 +110,109 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
         let body = if c.ordered() {
             ability_slots(&c.options, c.selected.clone(), path.clone(), ctx).into_any()
         } else {
-            let many = opts.with(|o| o.len()) > 14;
-            let groups: Vec<String> = opts.with(|o| {
-                let mut g: Vec<String> = Vec::new();
-                for x in o.iter().filter_map(|x| x.group.clone()) {
-                    if !g.contains(&x) {
-                        g.push(x);
-                    }
-                }
-                g
-            });
             let selected = c.selected.clone();
-            let chips = (many && n > 0).then(|| {
-                let labels: Vec<(String, String)> = opts.with(|o| {
-                    selected.iter().filter_map(|v| o.iter().find(|x| &x.value == v).map(|x| (v.clone(), x.label.clone()))).collect()
-                });
-                let sel = selected.clone();
-                let p = path.clone();
-                view! {
-                    <div class="chips">
-                        {labels.into_iter().map(|(v, l)| {
-                            let (sel, p) = (sel.clone(), p.clone());
-                            view! {
-                                <button class="chip removable" aria-label=format!("Remove {l}") on:click=move |_| {
-                                    let next: Vec<String> = sel.iter().filter(|x| **x != v).cloned().collect();
-                                    ctx.edit(|ch| ch.set_choice(&p, next));
-                                }>{l.clone()}{icon("x")}</button>
-                            }
-                        }).collect_view()}
-                    </div>
-                }
-            });
-            let facets = opts.with(|o| facets_of(o));
-            let filter_menu = (!facets.is_empty()).then(|| filter_menu(facets.clone(), facet_sel, only_available, opts, &anchor));
-            let group_bar = (many && groups.len() > 1 && facets.is_empty()).then(|| {
-                view! {
-                    <div class="group-bar" role="group" aria-label="Filter options">
-                        <button class="tab small" class:active=move || group.get().is_none() aria-pressed=move || group.get().is_none().to_string() on:click=move |_| group.set(None)>"All"</button>
-                        {groups.into_iter().map(|g| {
-                            let g2 = g.clone();
-                            let g3 = g.clone();
-                            {
-                            let g4 = g.clone();
-                            view! { <button class="tab small" class:active=move || group.get().as_deref() == Some(g2.as_str()) aria-pressed=move || (group.get().as_deref() == Some(g4.as_str())).to_string() on:click=move |_| group.set(Some(g3.clone()))>{g}</button> }
-                        }
-                        }).collect_view()}
-                    </div>
-                }
-            });
-            let p2 = path.clone();
-            let list = move || {
-                let q = search.get().to_lowercase();
-                let g = group.get();
-                let selected = selected.clone();
-                let sel = facet_sel.get();
-                let avail = only_available.get();
-                opts.get()
-                    .into_iter()
-                    .filter(|o| g.is_none() || o.group == g)
-                    .filter(|o| passes(o, &sel))
-                    .filter(|o| !avail || o.disabled.is_none() || selected.contains(&o.value))
-                    .filter(|o| q.is_empty() || o.label.to_lowercase().contains(&q) || o.detail.to_lowercase().contains(&q))
-                    .map(|o| option_row(o, &selected, count, p2.clone(), inspect, ctx))
-                    .collect_view()
-            };
-            view! {
-                {chips}
-                {many.then(|| view! {
-                    <input class="search" type="search" placeholder="Search options" aria-label="Search options"
-                        prop:value=move || search.get()
-                        on:input=move |ev| search.set(event_target_value(&ev)) />
-                })}
-                {group_bar}
-                {filter_menu}
-                <div class="options" class:scroll=many>{list}</div>
-            }
-            .into_any()
+            let p_set = path.clone();
+            let on_set = Callback::new(move |next: Vec<String>| ctx.edit(|ch| ch.set_choice(&p_set, next.clone())));
+            option_list(opts, selected, count, on_set, state, &anchor).into_any()
         };
         view! { <section class="choice" class:complete=done class:fresh=is_new id=anchor.clone() tabindex="-1" role="group" aria-labelledby=format!("{title_id} {anchor}-origin")>{header}{body}</section> }.into_any()
+    }
+}
+
+/// Search, filter and expansion state for an option list. Created by the
+/// owner of the list so it survives the list re-rendering after a pick.
+#[derive(Clone, Copy)]
+pub struct ListState {
+    search: RwSignal<String>,
+    inspect: RwSignal<Option<String>>,
+    group: RwSignal<Option<String>>,
+    facet_sel: RwSignal<BTreeMap<String, BTreeSet<String>>>,
+    only_available: RwSignal<bool>,
+}
+
+impl ListState {
+    pub fn new() -> Self {
+        ListState {
+            search: RwSignal::new(String::new()),
+            inspect: RwSignal::new(None),
+            group: RwSignal::new(None),
+            facet_sel: RwSignal::new(BTreeMap::new()),
+            only_available: RwSignal::new(false),
+        }
+    }
+}
+
+/// A searchable, filterable list of options. Every option expands to its full
+/// description; the round control selects (`on_set` receives the new
+/// selection, at most `count` values).
+pub fn option_list(opts: Memo<Vec<OptionItem>>, selected: Vec<String>, count: usize, on_set: Callback<Vec<String>>, state: ListState, anchor: &str) -> impl IntoView {
+    let ListState { search, inspect, group, facet_sel, only_available } = state;
+    let n = selected.len();
+    let many = opts.with(|o| o.len()) > 14;
+    let groups: Vec<String> = opts.with(|o| {
+        let mut g: Vec<String> = Vec::new();
+        for x in o.iter().filter_map(|x| x.group.clone()) {
+            if !g.contains(&x) {
+                g.push(x);
+            }
+        }
+        g
+    });
+    let chips = (many && n > 0 && count > 1).then(|| {
+        let labels: Vec<(String, String)> =
+            opts.with(|o| selected.iter().filter_map(|v| o.iter().find(|x| &x.value == v).map(|x| (v.clone(), x.label.clone()))).collect());
+        let sel = selected.clone();
+        view! {
+            <div class="chips">
+                {labels.into_iter().map(|(v, l)| {
+                    let sel = sel.clone();
+                    view! {
+                        <button class="chip removable" aria-label=format!("Remove {l}") on:click=move |_| {
+                            on_set.run(sel.iter().filter(|x| **x != v).cloned().collect());
+                        }>{l.clone()}{icon("x")}</button>
+                    }
+                }).collect_view()}
+            </div>
+        }
+    });
+    let facets = opts.with(|o| facets_of(o));
+    let filter_menu = (!facets.is_empty()).then(|| filter_menu(facets.clone(), facet_sel, only_available, opts, anchor));
+    let group_bar = (many && groups.len() > 1 && facets.is_empty()).then(|| {
+        view! {
+            <div class="group-bar" role="group" aria-label="Filter options">
+                <button class="tab small" class:active=move || group.get().is_none() aria-pressed=move || group.get().is_none().to_string() on:click=move |_| group.set(None)>"All"</button>
+                {groups.into_iter().map(|g| {
+                    let (g2, g3, g4) = (g.clone(), g.clone(), g.clone());
+                    view! { <button class="tab small" class:active=move || group.get().as_deref() == Some(g2.as_str()) aria-pressed=move || (group.get().as_deref() == Some(g4.as_str())).to_string() on:click=move |_| group.set(Some(g3.clone()))>{g}</button> }
+                }).collect_view()}
+            </div>
+        }
+    });
+    let list = move || {
+        let q = search.get().to_lowercase();
+        let g = group.get();
+        let selected = selected.clone();
+        let sel = facet_sel.get();
+        let avail = only_available.get();
+        opts.get()
+            .into_iter()
+            .filter(|o| g.is_none() || o.group == g)
+            .filter(|o| passes(o, &sel))
+            .filter(|o| !avail || o.disabled.is_none() || selected.contains(&o.value))
+            .filter(|o| q.is_empty() || o.label.to_lowercase().contains(&q) || o.detail.to_lowercase().contains(&q))
+            .map(|o| option_row(o, &selected, count, on_set, inspect))
+            .collect_view()
+    };
+    view! {
+        {chips}
+        {many.then(|| view! {
+            <input class="search" type="search" placeholder="Search by name or detail" aria-label="Search options"
+                prop:value=move || search.get()
+                on:input=move |ev| search.set(event_target_value(&ev)) />
+        })}
+        {group_bar}
+        {filter_menu}
+        <div class="options" class:scroll=many>{list}</div>
     }
 }
 
@@ -324,7 +345,7 @@ fn preview(body: &[compendium::Entry]) -> String {
 /// selects), and a card that expands to the full description when clicked.
 /// Options without a description have nothing to expand; there the card is
 /// simply the select control's label.
-fn option_row(o: OptionItem, selected: &[String], count: usize, path: String, inspect: RwSignal<Option<String>>, ctx: EditorCtx) -> impl IntoView {
+fn option_row(o: OptionItem, selected: &[String], count: usize, on_set: Callback<Vec<String>>, inspect: RwSignal<Option<String>>) -> impl IntoView {
     let is_sel = selected.contains(&o.value);
     let full = selected.len() >= count && count > 1;
     let blocked = o.disabled.is_some() && !is_sel;
@@ -334,8 +355,7 @@ fn option_row(o: OptionItem, selected: &[String], count: usize, path: String, in
         if blocked {
             return;
         }
-        let next = toggle(sel.clone(), &value, count);
-        ctx.edit(|ch| ch.set_choice(&path, next));
+        on_set.run(toggle(sel.clone(), &value, count));
     };
     let pick2 = pick.clone();
     let has_body = !o.body.is_empty();
@@ -346,6 +366,8 @@ fn option_row(o: OptionItem, selected: &[String], count: usize, path: String, in
     let category = facet("Category").into_iter().next();
     let abilities = facet("Ability increase");
     let grants = facet("Grants");
+    let spells = facet("Spells");
+    let origin_feat = facet("Origin feat");
     let summary = if has_body && !o.facets.is_empty() { preview(&o.body) } else { String::new() };
     let label = o.label.clone();
     let action = if is_sel { format!("Remove {label}") } else { format!("Select {label}") };
@@ -365,7 +387,13 @@ fn option_row(o: OptionItem, selected: &[String], count: usize, path: String, in
             })}
         </span>
         <span class="option-detail">{o.detail.clone()}</span>
-        {(!grants.is_empty()).then(|| view! { <span class="tags">{grants.iter().map(|g| view! { <span class="tag">{g.clone()}</span> }).collect_view()}</span> })}
+        {(!grants.is_empty() || !spells.is_empty() || !origin_feat.is_empty()).then(|| view! {
+            <span class="tags">
+                {origin_feat.iter().map(|f| view! { <span class="tag cat">{format!("Feat: {f}")}</span> }).collect_view()}
+                {spells.iter().map(|x| view! { <span class="tag asi">{x.clone()}</span> }).collect_view()}
+                {grants.iter().filter(|g| !(g.as_str() == "Spells" && !spells.is_empty())).map(|g| view! { <span class="tag">{g.clone()}</span> }).collect_view()}
+            </span>
+        })}
         {(!summary.is_empty()).then(|| view! { <span class="option-summary">{summary.clone()}</span> })}
         {o.warning.clone().map(|w| view! { <span class="badge warn">{w}</span> })}
         {o.disabled.clone().filter(|_| !is_sel).map(|d| {

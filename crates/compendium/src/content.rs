@@ -374,4 +374,19 @@ pub struct Language {
     pub source: String,
     /// standard, exotic, rare, secret, ...
     pub kind: String,
+    /// Typical speakers, script and notes.
+    #[serde(default)]
+    pub body: Vec<Entry>,
+}
+
+/// A rules glossary entry: skills, weapon masteries and properties,
+/// conditions, senses. Used to explain options when choosing.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Rule {
+    pub key: Key,
+    /// `skill`, `mastery`, `property`, `condition`, `sense`.
+    pub kind: String,
+    pub name: String,
+    pub source: String,
+    pub body: Vec<Entry>,
 }

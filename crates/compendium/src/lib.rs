@@ -32,7 +32,7 @@ macro_rules! record {
         }
     )*};
 }
-record!(Species, Background, Feat, Class, Subclass, OptionalFeature, Spell, Item, Language);
+record!(Species, Background, Feat, Class, Subclass, OptionalFeature, Spell, Item, Language, Rule);
 
 /// A list of records with a key index (index rebuilt after deserializing).
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -86,6 +86,8 @@ pub struct Compendium {
     pub spells: Table<Spell>,
     pub items: Table<Item>,
     pub languages: Table<Language>,
+    #[serde(default)]
+    pub rules: Table<Rule>,
 }
 
 impl Compendium {
@@ -106,6 +108,7 @@ impl Compendium {
         self.spells.reindex();
         self.items.reindex();
         self.languages.reindex();
+        self.rules.reindex();
     }
 
     pub fn source(&self, id: &str) -> Option<&SourceInfo> {
@@ -114,6 +117,28 @@ impl Compendium {
 
     pub fn source_name(&self, id: &str) -> String {
         self.source(id).map(|s| s.name.clone()).unwrap_or_else(|| id.to_string())
+    }
+
+    /// A glossary entry by kind and name, preferring the 2024 version.
+    pub fn rule(&self, kind: &str, name: &str) -> Option<&Rule> {
+        let mut found: Vec<&Rule> = self.rules.iter().filter(|r| r.kind == kind && r.name.eq_ignore_ascii_case(name)).collect();
+        found.sort_by_key(|r| !matches!(r.source.as_str(), "XPHB"));
+        found.into_iter().next()
+    }
+
+    /// A language by name, preferring the 2024 version.
+    pub fn language(&self, name: &str) -> Option<&Language> {
+        let mut found: Vec<&Language> = self.languages.iter().filter(|l| l.name.eq_ignore_ascii_case(name)).collect();
+        // The 2024 book's entries are mostly bare; prefer one with text.
+        found.sort_by_key(|l| (l.body.is_empty(), !matches!(l.source.as_str(), "XPHB" | "PHB")));
+        found.into_iter().next()
+    }
+
+    /// An ordinary (non-magic) item by name, preferring the 2024 version.
+    pub fn base_item(&self, name: &str) -> Option<&Item> {
+        let mut found: Vec<&Item> = self.items.iter().filter(|i| i.rarity.is_none() && i.name.eq_ignore_ascii_case(name)).collect();
+        found.sort_by_key(|i| (!matches!(i.source.as_str(), "XPHB"), i.body.is_empty()));
+        found.into_iter().next()
     }
 
     /// The 2024 class that replaces an older (legacy) class, if it was

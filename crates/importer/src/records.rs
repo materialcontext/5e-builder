@@ -1285,16 +1285,70 @@ pub fn items(base: &Value, items: &Value) -> Vec<Item> {
 pub fn languages(data: &Value) -> Vec<Language> {
     arr(data, "language")
         .into_iter()
-        .map(|o| Language {
-            key: Key::new(s(o, "name"), s(o, "source")),
-            name: s(o, "name").to_string(),
-            source: s(o, "source").to_string(),
-            kind: match s(o, "type") {
-                "" => "other".to_string(),
-                t => t.to_string(),
-            },
+        .map(|o| {
+            let mut body = Vec::new();
+            let list = |k: &str| -> Vec<String> {
+                o.get(k).and_then(Value::as_array).map(|v| v.iter().filter_map(Value::as_str).map(strip).filter(|x| !x.is_empty()).collect()).unwrap_or_default()
+            };
+            let speakers = list("typicalSpeakers");
+            if !speakers.is_empty() {
+                body.push(Entry::P(format!("Typical speakers: {}.", speakers.join(", "))));
+            }
+            if let Some(script) = o.get("script").and_then(Value::as_str) {
+                body.push(Entry::P(format!("Script: {}.", strip(script))));
+            }
+            body.extend(text::entries(o.get("entries").unwrap_or(&Value::Null), &Refs::default()));
+            Language {
+                key: Key::new(s(o, "name"), s(o, "source")),
+                name: s(o, "name").to_string(),
+                source: s(o, "source").to_string(),
+                kind: match s(o, "type") {
+                    "" => "other".to_string(),
+                    t => t.to_string(),
+                },
+                body,
+            }
         })
         .collect()
+}
+
+/// Glossary entries used to explain options: skills, weapon masteries and
+/// properties, conditions and senses.
+pub fn rules(skills: &Value, base_items: &Value, conditions: &Value, senses: &Value) -> Vec<Rule> {
+    let mut out = Vec::new();
+    let mut push = |kind: &str, o: &Obj, name: String| {
+        let body = text::entries(o.get("entries").unwrap_or(&Value::Null), &Refs::default());
+        if name.is_empty() || body.is_empty() {
+            return;
+        }
+        out.push(Rule { key: Key::new(&format!("{kind} {name}"), s(o, "source")), kind: kind.into(), name, source: s(o, "source").into(), body });
+    };
+    for o in arr(skills, "skill") {
+        push("skill", o, s(o, "name").into());
+    }
+    for o in arr(base_items, "itemMastery") {
+        push("mastery", o, s(o, "name").into());
+    }
+    for o in arr(base_items, "itemProperty") {
+        // Properties keep their display name inside the first entry.
+        let name = o.get("name").and_then(Value::as_str).map(String::from).or_else(|| {
+            o.get("entries").and_then(Value::as_array).and_then(|e| e.first()).and_then(|e| e.get("name")).and_then(Value::as_str).map(String::from)
+        });
+        let abbr = s(o, "abbreviation").to_string();
+        if let Some(n) = name {
+            push("property", o, n);
+        }
+        if !abbr.is_empty() {
+            push("property-abbr", o, abbr);
+        }
+    }
+    for o in arr(conditions, "condition") {
+        push("condition", o, s(o, "name").into());
+    }
+    for o in arr(senses, "sense") {
+        push("sense", o, s(o, "name").into());
+    }
+    out
 }
 
 pub fn sources(books: &Value, adventures: &Value) -> Vec<SourceInfo> {

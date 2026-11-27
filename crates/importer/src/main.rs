@@ -105,6 +105,7 @@ fn build(dir: &Path) -> Compendium {
         spells: Table::new(records::spells(&spell_files, &lookup)),
         items: Table::new(items),
         languages: Table::new(records::languages(&load(dir, "languages.json"))),
+        rules: Table::new(records::rules(&load(dir, "skills.json"), &load(dir, "items-base.json"), &load(dir, "conditionsdiseases.json"), &load(dir, "senses.json"))),
     };
 
     // Keep only sources that content actually uses, and add unknown ones.

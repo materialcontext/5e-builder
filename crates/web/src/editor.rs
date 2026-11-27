@@ -518,53 +518,20 @@ fn BasicsStep() -> impl IntoView {
 
 // ------------------------------------------------------------------ Pickers for top-level content
 
-#[derive(Clone, PartialEq)]
-struct Card {
-    key: Key,
-    name: String,
-    source: String,
-    legacy: bool,
-    detail: String,
-}
-
-/// Searchable grid of cards; `on_pick` receives the chosen key.
+/// Browsable list of classes, species or backgrounds: search, filters, and
+/// every entry expands to its full description; the round control picks it.
 #[component]
-fn CardGrid(cards: Signal<Vec<Card>>, selected: Signal<Option<Key>>, on_pick: Callback<Key>) -> impl IntoView {
-    let search = RwSignal::new(String::new());
-    let hide_legacy = RwSignal::new(false);
-    let shown = move || {
-        let q = search.get().to_lowercase();
-        let sel = selected.get();
-        cards
-            .get()
-            .into_iter()
-            .filter(|c| q.is_empty() || c.name.to_lowercase().contains(&q) || c.source.to_lowercase().contains(&q))
-            .filter(|c| !hide_legacy.get() || !c.legacy || Some(&c.key) == sel.as_ref())
-            .map(|c| {
-                let k = c.key.clone();
-                let is_sel = sel.as_ref() == Some(&c.key);
-                view! {
-                    <button class="card" class:selected=is_sel on:click=move |_| on_pick.run(k.clone())>
-                        <span class="card-name">{c.name.clone()}</span>
-                        <span class="card-source">{c.source.clone()}{c.legacy.then_some(" · legacy")}</span>
-                        <span class="card-detail">{c.detail.clone()}</span>
-                    </button>
-                }
-            })
-            .collect_view()
-    };
-    view! {
-        <div class="grid-tools">
-            <input class="search" type="search" placeholder="Search by name or book" aria-label="Search" prop:value=move || search.get() on:input=move |ev| search.set(event_target_value(&ev)) />
-            <label class="toggle small"><input type="checkbox" prop:checked=move || hide_legacy.get() on:change=move |ev| hide_legacy.set(event_target_checked(&ev)) />"Hide legacy"</label>
-        </div>
-        <div class="cards">{shown}</div>
+fn RecordList(items: Memo<Vec<rules::OptionItem>>, selected: Signal<Option<Key>>, on_pick: Callback<Key>) -> impl IntoView {
+    let state = crate::picker::ListState::new();
+    let on_set = Callback::new(move |next: Vec<String>| {
+        if let Some(k) = next.into_iter().next() {
+            on_pick.run(Key(k));
+        }
+    });
+    move || {
+        let sel: Vec<String> = selected.get().map(|k| vec![k.0]).unwrap_or_default();
+        view! { <div class="record-list">{crate::picker::option_list(items, sel, 1, on_set, state, "browse")}</div> }
     }
-}
-
-fn sort_cards(mut v: Vec<Card>) -> Vec<Card> {
-    v.sort_by(|a, b| (a.legacy, &a.name, &a.source).cmp(&(b.legacy, &b.name, &b.source)));
-    v
 }
 
 // ------------------------------------------------------------------ Class
@@ -574,31 +541,8 @@ fn ClassStep() -> impl IntoView {
     let ctx = expect_context::<EditorCtx>();
     let comp = ctx.comp.get_value();
     let browsing = RwSignal::new(ctx.ch.with_untracked(|c| c.levels.is_empty()));
-    let c1 = comp.clone();
-    let cards = Signal::derive(move || {
-        let enabled = ctx.ch.with(|c| c.settings.clone());
-        sort_cards(
-            c1.classes
-                .iter()
-                .filter(|c| enabled.source_enabled(&c.source))
-                // 2014 classes reprinted in 2024 give way to the reprint (their
-                // subclasses are offered on it); keep one already in use visible.
-                .filter(|c| c1.replacement_class(&c.key).is_none() || ctx.ch.with(|ch| ch.levels.iter().any(|l| l.class == c.key)))
-                .map(|c| Card {
-                    key: c.key.clone(),
-                    name: c.name.clone(),
-                    source: c1.source_name(&c.source),
-                    legacy: c.legacy,
-                    detail: format!(
-                        "d{} hit die · {}{}",
-                        c.hit_die,
-                        c.primary.iter().map(|a| a.abbr()).collect::<Vec<_>>().join("/"),
-                        if c.spellcasting.is_caster() { " · spellcaster" } else { "" }
-                    ),
-                })
-                .collect(),
-        )
-    });
+    let c_items = comp.clone();
+    let items = Memo::new(move |_| ctx.ch.with(|c| rules::browse::classes(c, &c_items)));
     let selected = Signal::derive(move || ctx.ch.with(|c| c.levels.first().map(|l| l.class.clone())));
     let on_pick = Callback::new(move |k: Key| {
         ctx.edit(|c| c.set_starting_class(k));
@@ -642,7 +586,7 @@ fn ClassStep() -> impl IntoView {
     view! {
         <Show when=move || browsing.get() || selected.get().is_none()>
             <p class="muted">"Pick the class your character starts in. You can add levels in other classes below."</p>
-            <CardGrid cards=cards selected=selected on_pick=on_pick />
+            <RecordList items=items selected=selected on_pick=on_pick />
         </Show>
         <Show when=move || !browsing.get() && selected.get().is_some()>
             {summary.clone()}
@@ -713,6 +657,20 @@ fn LevelsPanel() -> impl IntoView {
                     </select>
                     <button class="button" disabled=move || add_class.get().is_empty() || ctx.ch.with(|c| c.total_level() >= 20)
                         on:click=move |_| { let k = add_class.get(); if !k.is_empty() { ctx.edit(|c| c.level_up(Key(k))) } }>"Level up"</button>
+                    {move || {
+                        let k = add_class.get();
+                        if k.is_empty() {
+                            return ().into_any();
+                        }
+                        let comp = ctx.comp.get_value();
+                        let item = ctx.ch.with(|c| rules::browse::classes(c, &comp)).into_iter().find(|o| o.value == k);
+                        item.map(|o| view! {
+                            <details class="class-preview" open>
+                                <summary>{format!("About the {} ({})", o.label, o.detail)}</summary>
+                                <Entries entries=o.body.clone() />
+                            </details>
+                        }.into_any()).unwrap_or_else(|| ().into_any())
+                    }}
                     <button class="button ghost" disabled=move || ctx.ch.with(|c| c.levels.len() <= 1)
                         on:click=move |_| { let comp = ctx.comp.get_value(); ctx.edit(|c| { c.level_down(); c.prune_choices(&comp) }) }>"Remove last level"</button>
                 </div>
@@ -742,17 +700,8 @@ fn BackgroundStep() -> impl IntoView {
     let ctx = expect_context::<EditorCtx>();
     let comp = ctx.comp.get_value();
     let browsing = RwSignal::new(ctx.ch.with_untracked(|c| c.background.is_none()));
-    let c1 = comp.clone();
-    let cards = Signal::derive(move || {
-        let s = ctx.ch.with(|c| c.settings.clone());
-        sort_cards(
-            c1.backgrounds
-                .iter()
-                .filter(|b| s.source_enabled(&b.source))
-                .map(|b| Card { key: b.key.clone(), name: b.name.clone(), source: c1.source_name(&b.source), legacy: b.legacy, detail: grants_summary(&c1, &b.grants) })
-                .collect(),
-        )
-    });
+    let c_items = comp.clone();
+    let items = Memo::new(move |_| ctx.ch.with(|c| rules::browse::backgrounds(c, &c_items)));
     let selected = Signal::derive(move || ctx.ch.with(|c| c.background.clone()));
     let on_pick = Callback::new(move |k: Key| {
         ctx.edit(|c| c.set_background(Some(k)));
@@ -778,7 +727,7 @@ fn BackgroundStep() -> impl IntoView {
     };
     view! {
         <Show when=move || browsing.get() || selected.get().is_none()>
-            <CardGrid cards=cards selected=selected on_pick=on_pick />
+            <RecordList items=items selected=selected on_pick=on_pick />
         </Show>
         <Show when=move || !browsing.get() && selected.get().is_some()>
             {summary.clone()}
@@ -795,29 +744,8 @@ fn SpeciesStep() -> impl IntoView {
     let ctx = expect_context::<EditorCtx>();
     let comp = ctx.comp.get_value();
     let browsing = RwSignal::new(ctx.ch.with_untracked(|c| c.species.is_none()));
-    let c1 = comp.clone();
-    let cards = Signal::derive(move || {
-        let s = ctx.ch.with(|c| c.settings.clone());
-        sort_cards(
-            c1.species
-                .iter()
-                .filter(|x| s.source_enabled(&x.source))
-                .map(|x| Card {
-                    key: x.key.clone(),
-                    name: x.name.clone(),
-                    source: c1.source_name(&x.source),
-                    legacy: x.legacy,
-                    detail: format!(
-                        "{} · speed {} ft.{}{}",
-                        x.sizes.iter().map(|s| s.name()).collect::<Vec<_>>().join("/"),
-                        x.speed.walk,
-                        x.darkvision.map(|d| format!(" · darkvision {d} ft.")).unwrap_or_default(),
-                        if x.lineages.is_empty() { String::new() } else { format!(" · {} lineages", x.lineages.len()) }
-                    ),
-                })
-                .collect(),
-        )
-    });
+    let c_items = comp.clone();
+    let items = Memo::new(move |_| ctx.ch.with(|c| rules::browse::species(c, &c_items)));
     let selected = Signal::derive(move || ctx.ch.with(|c| c.species.clone()));
     let on_pick = Callback::new(move |k: Key| {
         ctx.edit(|c| c.set_species(Some(k)));
@@ -839,7 +767,7 @@ fn SpeciesStep() -> impl IntoView {
     };
     view! {
         <Show when=move || browsing.get() || selected.get().is_none()>
-            <CardGrid cards=cards selected=selected on_pick=on_pick />
+            <RecordList items=items selected=selected on_pick=on_pick />
         </Show>
         <Show when=move || !browsing.get() && selected.get().is_some()>
             {summary.clone()}
@@ -947,6 +875,12 @@ fn AbilitiesStep() -> impl IntoView {
             {tab(AbilityMethod::Rolled, "Roll 4d6")}
             {tab(AbilityMethod::Manual, "Manual")}
         </div>
+        <p class="muted method-help">{move || match method() {
+            AbilityMethod::PointBuy => "Point buy: every score starts at 8 and you have 27 points. Raising a score costs 1 point per step up to 13, then 2 points each for 14 and 15 (15 is the most you can buy).",
+            AbilityMethod::StandardArray => "Standard array: assign 15, 14, 13, 12, 10 and 8, one to each ability.",
+            AbilityMethod::Rolled => "Roll 4d6: roll four six-sided dice six times, drop the lowest die each time, and assign the six totals to your abilities.",
+            AbilityMethod::Manual => "Manual: type any scores, for example ones your table rolled at the session or a DM-approved array.",
+        }}</p>
         <Show when=move || method() == AbilityMethod::Rolled>
             <div class="row">
                 <button class="button" on:click=move |_| {
@@ -1093,38 +1027,39 @@ fn EquipmentStep() -> impl IntoView {
     let query = RwSignal::new(String::new());
     let custom = RwSignal::new(String::new());
     let c1 = comp.clone();
-    let results = move || {
+    let item_state = crate::picker::ListState::new();
+    let item_hits = Memo::new(move |_| {
         let q = query.get().to_lowercase();
         if q.len() < 2 {
-            return ().into_any();
+            return vec![];
         }
         let s = ctx.ch.with(|c| c.settings.clone());
         let mut hits: Vec<&Item> = c1.items.iter().filter(|i| s.source_enabled(&i.source) && i.name.to_lowercase().contains(&q)).collect();
         hits.sort_by_key(|i| (!i.name.to_lowercase().starts_with(&q), rules::options::source_rank(&i.source), i.name.len()));
         hits.truncate(30);
-        view! {
-            <div class="options scroll">
-                {hits.into_iter().map(|i| {
-                    let key = i.key.clone();
-                    let name = i.name.clone();
-                    view! {
-                        <div class="option">
-                            <button class="option-main" on:click=move |_| {
-                                let (key, name) = (key.clone(), name.clone());
-                                ctx.edit(|c| c.inventory.push(rules::InventoryItem { item: Some(key), name, qty: 1, equipped: false, attuned: false, starting: false, notes: String::new() }));
-                                query.set(String::new());
-                            }>
-                                <span class="check">"+"</span>
-                                <span class="option-label">{i.name.clone()}</span>
-                                <span class="option-detail">{format!("{} · {}{}", i.kind, i.source, i.rarity.as_ref().map(|r| format!(" · {r}")).unwrap_or_default())}</span>
-                            </button>
-                        </div>
-                    }
-                }).collect_view()}
-            </div>
+        hits.into_iter()
+            .map(|i| rules::OptionItem {
+                value: i.key.0.clone(),
+                label: i.name.clone(),
+                detail: format!("{} · {}{}", i.kind, c1.source_name(&i.source), i.rarity.as_ref().map(|r| format!(" · {r}")).unwrap_or_default()),
+                disabled: None,
+                warning: None,
+                body: rules::explain::item(&c1, i),
+                group: None,
+                facets: vec![],
+            })
+            .collect::<Vec<_>>()
+    });
+    let add_item = Callback::new(move |next: Vec<String>| {
+        let comp = ctx.comp.get_value();
+        if let Some(k) = next.into_iter().next() {
+            let key = Key(k);
+            let name = comp.items.get(&key).map(|i| i.name.clone()).unwrap_or_default();
+            ctx.edit(|c| c.inventory.push(rules::InventoryItem { item: Some(key.clone()), name: name.clone(), qty: 1, equipped: false, attuned: false, starting: false, notes: String::new() }));
+            query.set(String::new());
         }
-        .into_any()
-    };
+    });
+    let results = move || (item_hits.with(|h| !h.is_empty())).then(|| crate::picker::option_list(item_hits, vec![], 1, add_item, item_state, "items"));
     let inventory = move || {
         let inv = ctx.ch.with(|c| c.inventory.clone());
         let attuned = inv.iter().filter(|i| i.attuned).count();
@@ -1137,7 +1072,14 @@ fn EquipmentStep() -> impl IntoView {
                 <tbody>
                     {inv.into_iter().enumerate().map(|(i, it)| view! {
                         <tr>
-                            <td>{it.name.clone()}{it.starting.then(|| view! { <span class="badge">"starting"</span> })}</td>
+                            <td>{
+                                let comp = ctx.comp.get_value();
+                                let body = it.item.as_ref().and_then(|k| comp.items.get(k)).map(|x| rules::explain::item(&comp, x));
+                                match body {
+                                    Some(b) => view! { <details class="inv-item"><summary>{it.name.clone()}</summary><Entries entries=b /></details> }.into_any(),
+                                    None => view! { <span>{it.name.clone()}</span> }.into_any(),
+                                }
+                            }{it.starting.then(|| view! { <span class="badge">"starting"</span> })}</td>
                             <td><input class="num" type="number" min="1" aria-label=format!("Quantity of {}", it.name) prop:value=it.qty.to_string()
                                 on:change=move |ev| { let q: u16 = event_target_value(&ev).parse().unwrap_or(1); ctx.edit(|c| { c.inventory[i].qty = q.max(1); c.inventory[i].starting = false; }) } /></td>
                             <td><input type="checkbox" aria-label=format!("{} equipped", it.name) prop:checked=it.equipped on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.inventory[i].equipped = on) } /></td>

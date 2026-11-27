@@ -860,3 +860,31 @@ fn feat_filter_tags() {
     assert!(mi.contains(&("Prerequisite".into(), "None".into())), "{mi:?}");
     assert!(f("mobile|phb").contains(&("Edition".into(), "Older (2014)".into())));
 }
+
+#[test]
+fn every_option_can_be_expanded() {
+    let Some(comp) = comp() else { return };
+    let ch0 = Character::new("x");
+    for list in [crate::browse::classes(&ch0, comp), crate::browse::species(&ch0, comp), crate::browse::backgrounds(&ch0, comp)] {
+        for o in &list {
+            assert!(!o.body.is_empty() && !o.facets.is_empty(), "{} has no description or filters", o.label);
+        }
+    }
+    let mut empty = Vec::new();
+    for class in comp.classes.iter().filter(|c| !c.legacy && c.source == "XPHB") {
+        let mut ch = hero(&class.key.0, "sage|xphb", "human|xphb");
+        for _ in 1..5 {
+            ch.level_up(class.key.clone());
+        }
+        autofill(&mut ch, comp);
+        let b = build(&ch, comp);
+        for c in &b.choices {
+            for o in options(c, &b, &ch, comp) {
+                if o.body.is_empty() {
+                    empty.push(format!("{} / {}: {}", class.name, c.label, o.label));
+                }
+            }
+        }
+    }
+    assert!(empty.is_empty(), "options without a description: {:?}", &empty[..empty.len().min(20)]);
+}

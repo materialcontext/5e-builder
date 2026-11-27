@@ -194,8 +194,8 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
             .map(|s| {
                 let summary: Vec<&str> = s.features.iter().map(|f| f.name.as_str()).take(4).collect();
                 OptionItem::new(s.key.0.clone(), s.name.clone())
-                    .detail(comp.source_name(&s.source))
-                    .body(vec![Entry::P(summary.join(", "))])
+                    .detail(format!("{} · {}", summary.join(", "), comp.source_name(&s.source)))
+                    .body(crate::explain::subclass(comp, s))
             })
             .collect(),
         Options::Lineage { species } => comp
@@ -277,6 +277,10 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
             o.disabled = Some("Not available with the current sources".into());
             out.push(o);
         }
+    }
+    // Every option can be expanded to its full description.
+    for o in out.iter_mut() {
+        crate::explain::option(o, &choice.options, comp);
     }
     out
 }
@@ -477,7 +481,14 @@ fn spell_options(filter: &SpellFilter, choice: &ChoiceState, build: &Build, ch: 
             let lvl = if s.level == 0 { "Cantrip".to_string() } else { format!("Level {}", s.level) };
             let mut o = OptionItem::new(s.key.0.clone(), s.name.clone())
                 .detail(format!("{lvl} · {}{}", s.school_name(), if s.ritual { " · Ritual" } else { "" }))
-                .body(s.body.clone());
+                .body({
+                    let mut b = vec![Entry::P(format!(
+                        "Casting time: {} · Range: {} · Components: {} · Duration: {}",
+                        s.time, s.range, s.components, s.duration
+                    ))];
+                    b.extend(s.body.clone());
+                    b
+                });
             o.group = Some(lvl.clone());
             if let Some(k) = others.iter().find(|k| k.key == s.key) {
                 if k.class.is_some() && k.class == choice.class {
@@ -516,66 +527,7 @@ pub fn feat_facets(f: &Feat, comp: &Compendium) -> Vec<(String, String)> {
         out.insert((facet.to_string(), value.to_string()));
     };
     tag("Category", if f.category.is_none() { "Older feat (2014)" } else { f.category_label() });
-    fn walk(grants: &[Grant], tag: &mut dyn FnMut(&str, &str)) {
-        for g in grants {
-            match g {
-                Grant::Ability { ability, amount } if *amount > 0 => tag("Ability increase", ability.name()),
-                Grant::AbilityMax { .. } => {}
-                Grant::Spells(_) => tag("Grants", "Spells"),
-                Grant::Prof(p) => tag(
-                    "Grants",
-                    match p {
-                        Prof::Skill(_) => "Skill proficiency",
-                        Prof::Save(_) => "Saving throw proficiency",
-                        Prof::Armor(_) | Prof::Weapon(_) => "Armor or weapon training",
-                        Prof::Tool(_) => "Tool proficiency",
-                        Prof::Language(_) => "Languages",
-                    },
-                ),
-                Grant::Expertise(_) | Grant::ToolExpertise(_) => tag("Grants", "Expertise"),
-                Grant::Resist(_) | Grant::Immune(_) | Grant::CondImmune(_) => tag("Grants", "Resistance or immunity"),
-                Grant::Darkvision(_) | Grant::DarkvisionBonus { .. } | Grant::Sense { .. } => tag("Grants", "Senses"),
-                Grant::SpeedBonus { .. } | Grant::SpeedSet { .. } => tag("Grants", "Speed"),
-                Grant::HpPerLevel(_) | Grant::HpBonus(_) | Grant::HpPerClassLevel(_) => tag("Grants", "Hit points"),
-                Grant::AcBonus { .. } | Grant::NaturalArmor { .. } => tag("Grants", "Armor Class"),
-                Grant::AtLevel { grants, .. } => walk(grants, tag),
-                Grant::Choose(c) => options_facets(&c.options, tag),
-                _ => {}
-            }
-        }
-    }
-    fn options_facets(o: &Options, tag: &mut dyn FnMut(&str, &str)) {
-        match o {
-            Options::Abilities { from, amounts, .. } if amounts.iter().any(|a| *a > 0) => {
-                for a in from {
-                    tag("Ability increase", a.name());
-                }
-            }
-            Options::Skills(_) | Options::AnySkill => tag("Grants", "Skill proficiency"),
-            Options::SkillExpertise | Options::ExpertiseFrom(_) | Options::ToolExpertise(_) => tag("Grants", "Expertise"),
-            Options::Saves(_) => tag("Grants", "Saving throw proficiency"),
-            Options::Tools(_) | Options::AnyTool | Options::AnyArtisanTool | Options::AnyInstrument | Options::AnyGamingSet => {
-                tag("Grants", "Tool proficiency")
-            }
-            Options::Languages(_) | Options::AnyLanguage | Options::AnyStandardLanguage | Options::AnyExoticLanguage => tag("Grants", "Languages"),
-            Options::Weapons(_) | Options::WeaponMastery => tag("Grants", "Armor or weapon training"),
-            Options::Spells(_) => tag("Grants", "Spells"),
-            Options::OptionalFeatures { .. } => tag("Grants", "Maneuvers, invocations or similar"),
-            Options::Resist(_) => tag("Grants", "Resistance or immunity"),
-            Options::Bundles(bs) => {
-                for b in bs {
-                    walk(&b.grants, tag);
-                }
-            }
-            Options::Mixed(parts) => {
-                for p in parts {
-                    options_facets(p, tag);
-                }
-            }
-            _ => {}
-        }
-    }
-    walk(&f.grants, &mut tag);
+    facet_walk(&f.grants, &mut tag);
     match &f.prereq {
         None => tag("Prerequisite", "None"),
         Some(p) => {
@@ -613,4 +565,66 @@ pub fn feat_facets(f: &Feat, comp: &Compendium) -> Vec<(String, String)> {
     tag("Edition", if f.category.is_some() { "2024" } else { "Older (2014)" });
     tag("Source", &comp.source_name(&f.source));
     out.into_iter().collect()
+}
+
+/// Filter tags for what a list of grants gives (shared by feats, species,
+/// backgrounds and classes).
+pub fn facet_walk(grants: &[Grant], tag: &mut dyn FnMut(&str, &str)) {
+    for g in grants {
+        match g {
+            Grant::Ability { ability, amount } if *amount > 0 => tag("Ability increase", ability.name()),
+            Grant::AbilityMax { .. } => {}
+            Grant::Spells(_) => tag("Grants", "Spells"),
+            Grant::Prof(p) => tag(
+                "Grants",
+                match p {
+                    Prof::Skill(_) => "Skill proficiency",
+                    Prof::Save(_) => "Saving throw proficiency",
+                    Prof::Armor(_) | Prof::Weapon(_) => "Armor or weapon training",
+                    Prof::Tool(_) => "Tool proficiency",
+                    Prof::Language(_) => "Languages",
+                },
+            ),
+            Grant::Expertise(_) | Grant::ToolExpertise(_) => tag("Grants", "Expertise"),
+            Grant::Resist(_) | Grant::Immune(_) | Grant::CondImmune(_) => tag("Grants", "Resistance or immunity"),
+            Grant::Darkvision(_) | Grant::DarkvisionBonus { .. } | Grant::Sense { .. } => tag("Grants", "Senses"),
+            Grant::SpeedBonus { .. } | Grant::SpeedSet { .. } => tag("Grants", "Speed"),
+            Grant::HpPerLevel(_) | Grant::HpBonus(_) | Grant::HpPerClassLevel(_) => tag("Grants", "Hit points"),
+            Grant::AcBonus { .. } | Grant::NaturalArmor { .. } => tag("Grants", "Armor Class"),
+            Grant::AtLevel { grants, .. } => facet_walk(grants, tag),
+            Grant::Choose(c) => facet_options(&c.options, tag),
+            _ => {}
+        }
+    }
+}
+pub fn facet_options(o: &Options, tag: &mut dyn FnMut(&str, &str)) {
+    match o {
+        Options::Abilities { from, amounts, .. } if amounts.iter().any(|a| *a > 0) => {
+            for a in from {
+                tag("Ability increase", a.name());
+            }
+        }
+        Options::Skills(_) | Options::AnySkill => tag("Grants", "Skill proficiency"),
+        Options::SkillExpertise | Options::ExpertiseFrom(_) | Options::ToolExpertise(_) => tag("Grants", "Expertise"),
+        Options::Saves(_) => tag("Grants", "Saving throw proficiency"),
+        Options::Tools(_) | Options::AnyTool | Options::AnyArtisanTool | Options::AnyInstrument | Options::AnyGamingSet => {
+            tag("Grants", "Tool proficiency")
+        }
+        Options::Languages(_) | Options::AnyLanguage | Options::AnyStandardLanguage | Options::AnyExoticLanguage => tag("Grants", "Languages"),
+        Options::Weapons(_) | Options::WeaponMastery => tag("Grants", "Armor or weapon training"),
+        Options::Spells(_) => tag("Grants", "Spells"),
+        Options::OptionalFeatures { .. } => tag("Grants", "Maneuvers, invocations or similar"),
+        Options::Resist(_) => tag("Grants", "Resistance or immunity"),
+        Options::Bundles(bs) => {
+            for b in bs {
+                facet_walk(&b.grants, tag);
+            }
+        }
+        Options::Mixed(parts) => {
+            for p in parts {
+                facet_options(p, tag);
+            }
+        }
+        _ => {}
+    }
 }
