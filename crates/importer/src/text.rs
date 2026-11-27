@@ -6,6 +6,40 @@ use std::collections::HashMap;
 
 /// Flattens inline `{@tag ...}` markup into display text.
 pub fn strip(s: &str) -> String {
+    book_refs(&strip_tags(s))
+}
+
+/// Spells out page references written into the source text ("DMG p143")
+/// so players never see a bare book code.
+fn book_refs(s: &str) -> String {
+    const BOOKS: [(&str, &str); 6] = [
+        ("XDMG", "Dungeon Master's Guide (2024)"),
+        ("XPHB", "Player's Handbook (2024)"),
+        ("XMM", "Monster Manual (2025)"),
+        ("DMG", "Dungeon Master's Guide (2014)"),
+        ("PHB", "Player's Handbook (2014)"),
+        ("MM", "Monster Manual (2014)"),
+    ];
+    let mut out = s.to_string();
+    for (code, name) in BOOKS {
+        let needle = format!("{code} p");
+        let mut from = 0;
+        while let Some(i) = out[from..].find(&needle).map(|i| i + from) {
+            let before_ok = i == 0 || !out[..i].ends_with(|c: char| c.is_ascii_alphanumeric());
+            let digits: String = out[i + needle.len()..].chars().take_while(|c| c.is_ascii_digit()).collect();
+            if before_ok && !digits.is_empty() {
+                let replacement = format!("{name}, page {digits}");
+                out.replace_range(i..i + needle.len() + digits.len(), &replacement);
+                from = i + replacement.len();
+            } else {
+                from = i + needle.len();
+            }
+        }
+    }
+    out
+}
+
+fn strip_tags(s: &str) -> String {
     if !s.contains("{@") {
         return s.to_string();
     }
@@ -73,7 +107,17 @@ fn render_tag(inner: &str) -> String {
         "dice" | "damage" | "d20" | "autodice" => parts.get(1).filter(|s| !s.is_empty()).copied().unwrap_or(first).to_string(),
         "filter" | "book" | "adventure" | "5etools" | "link" | "footnote" | "homebrew" | "quickref" => first.to_string(),
         _ => {
-            let shown = parts.get(2).filter(|s| !s.is_empty()).copied().unwrap_or(first);
+            // Where the optional display text sits depends on the tag:
+            // {@spell name|source|display}, {@classFeature name|class|classSource|level|source|display},
+            // {@subclassFeature name|class|classSource|subclass|subclassSource|level|source|display}, ...
+            let display_at = match tag {
+                "classFeature" => 5,
+                "subclassFeature" => 7,
+                "subclass" => 4,
+                "deity" | "card" => 3,
+                _ => 2,
+            };
+            let shown = parts.get(display_at).filter(|s| !s.is_empty()).copied().unwrap_or(first);
             drop_bracket(shown).to_string()
         }
     }
@@ -308,5 +352,11 @@ mod tests {
         assert_eq!(strip("{@i see {@item rope|phb}}"), "see rope");
         assert_eq!(strip("{@damage 1d6} Acid"), "1d6 Acid");
         assert_eq!(strip("{@dice 5d4 × 10|5d4 × 10|Starting Gold}"), "5d4 × 10");
+        // Class/subclass feature tags keep the class's book in field 3: never show it.
+        assert_eq!(strip("replaces the Barbarian's {@classFeature Primal Knowledge|Barbarian|XPHB|3|XPHB} feature"), "replaces the Barbarian's Primal Knowledge feature");
+        assert_eq!(strip("{@classFeature Rage|Barbarian|XPHB|1|XPHB|your Rage}"), "your Rage");
+        assert_eq!(strip("{@subclassFeature Bonus Proficiency|Cleric|XPHB|Life|PHB|1}"), "Bonus Proficiency");
+        assert_eq!(strip("{@subclass Evoker|Wizard|XPHB|XPHB}"), "Evoker");
+        assert_eq!(strip("(see \"Special Features\" DMG p143)"), "(see \"Special Features\" Dungeon Master's Guide (2014), page 143)");
     }
 }

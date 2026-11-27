@@ -959,3 +959,43 @@ fn any_alternative_prerequisite_qualifies() {
     // Athlete: Strength or Dexterity 13.
     assert_eq!(check([8, 14, 10, 8, 8, 8], "athlete|xphb"), None, "Dexterity 13 qualifies");
 }
+
+#[test]
+fn no_book_codes_in_player_facing_text() {
+    let Some(comp) = comp() else { return };
+    let codes: std::collections::BTreeSet<String> = comp.sources.iter().map(|s| s.id.clone()).filter(|id| id.len() >= 3).collect();
+    let mut found = Vec::new();
+    let mut check = |what: &str, text: &str| {
+        for w in text.split(|c: char| !c.is_ascii_alphanumeric()) {
+            if codes.contains(w) {
+                found.push(format!("{what}: …{}…", &text[..text.len().min(80)]));
+                break;
+            }
+        }
+    };
+    for s in comp.subclasses.iter() {
+        check("subclass", &s.name);
+        check("subclass", &s.short_name);
+        for f in &s.features {
+            check(&s.name, &f.name);
+            check(&s.name, &compendium::Entry::plain(&f.body));
+        }
+    }
+    for c in comp.classes.iter() {
+        for f in &c.features {
+            check(&c.name, &compendium::Entry::plain(&f.body));
+        }
+    }
+    for f in comp.feats.iter() {
+        check(&f.name, &compendium::Entry::plain(&f.body));
+    }
+    for i in comp.items.iter() {
+        check(&i.name, &compendium::Entry::plain(&i.body));
+    }
+    for s in comp.spells.iter() {
+        check(&s.name, &compendium::Entry::plain(&s.body));
+    }
+    assert!(found.is_empty(), "raw book codes in text: {:?}", &found[..found.len().min(10)]);
+    let unnamed: Vec<&str> = comp.sources.iter().filter(|s| s.name == s.id).map(|s| s.id.as_str()).collect();
+    assert!(unnamed.is_empty(), "books shown by code instead of title: {unnamed:?}");
+}

@@ -1245,6 +1245,69 @@ fn item_record(o: &Obj) -> Option<Item> {
     })
 }
 
+/// Many magic items share text through `{#itemEntry Name|SRC}` references to
+/// templates in items-base.json (Dragon Scale Mail, Ioun Stone...). Replace
+/// each reference with the template, filling `{{item.field}}` placeholders
+/// from the item itself.
+fn expand_item_entries(mut o: Obj, templates: &HashMap<String, Value>) -> Obj {
+    let Some(entries) = o.get("entries").and_then(Value::as_array).cloned() else { return o };
+    if !entries.iter().any(|e| e.as_str().is_some_and(|t| t.starts_with("{#itemEntry "))) {
+        return o;
+    }
+    let field = |k: &str| -> String {
+        match o.get(k) {
+            Some(Value::String(v)) => v.clone(),
+            Some(Value::Array(v)) => {
+                let words: Vec<String> = v.iter().filter_map(Value::as_str).map(String::from).collect();
+                match words.as_slice() {
+                    [] => String::new(),
+                    [one] => one.clone(),
+                    _ => format!("{} and {}", words[..words.len() - 1].join(", "), words[words.len() - 1]),
+                }
+            }
+            Some(v) => v.to_string(),
+            None => String::new(),
+        }
+    };
+    let fill = |t: &str| -> String {
+        let mut out = String::new();
+        let mut rest = t;
+        while let Some(start) = rest.find("{{") {
+            out.push_str(&rest[..start]);
+            let Some(end) = rest[start..].find("}}") else { break };
+            let expr = rest[start + 2..start + end].trim();
+            let key = expr.rsplit(' ').next().unwrap_or(expr).trim_start_matches("item.");
+            let v = field(key);
+            out.push_str(&if expr.starts_with("getFullImmRes") { compendium::title_case(&v) } else { v });
+            rest = &rest[start + end + 2..];
+        }
+        out.push_str(rest);
+        out
+    };
+    fn fill_value(v: &Value, fill: &dyn Fn(&str) -> String) -> Value {
+        match v {
+            Value::String(t) => Value::String(fill(t)),
+            Value::Array(a) => Value::Array(a.iter().map(|x| fill_value(x, fill)).collect()),
+            Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (k.clone(), fill_value(x, fill))).collect()),
+            other => other.clone(),
+        }
+    }
+    let mut out = Vec::new();
+    for e in entries {
+        match e.as_str().and_then(|t| t.strip_prefix("{#itemEntry ")).map(|t| t.trim_end_matches('}')) {
+            Some(r) => {
+                let (name, src) = r.split_once('|').unwrap_or((r, "dmg"));
+                if let Some(Value::Array(tpl)) = templates.get(&format!("{}|{}", name.to_lowercase(), src.to_lowercase())) {
+                    out.extend(tpl.iter().map(|x| fill_value(x, &fill)));
+                }
+            }
+            None => out.push(e),
+        }
+    }
+    o.insert("entries".into(), Value::Array(out));
+    o
+}
+
 pub fn items(base: &Value, items: &Value) -> Vec<Item> {
     let base_list: Vec<Value> = base.get("baseitem").and_then(Value::as_array).cloned().unwrap_or_default();
     let base_index: HashMap<String, Obj> = base_list
@@ -1252,10 +1315,14 @@ pub fn items(base: &Value, items: &Value) -> Vec<Item> {
         .filter_map(Value::as_object)
         .map(|o| (format!("{}|{}", s(o, "name").to_lowercase(), s(o, "source").to_lowercase()), o.clone()))
         .collect();
+    let templates: HashMap<String, Value> = arr(base, "itemEntry")
+        .into_iter()
+        .map(|o| (format!("{}|{}", s(o, "name").to_lowercase(), s(o, "source").to_lowercase()), o.get("entriesTemplate").cloned().unwrap_or(Value::Null)))
+        .collect();
     let item_list: Vec<Value> = items.get("item").and_then(Value::as_array).cloned().unwrap_or_default();
     let resolved = inherit::resolve_copies(item_list, |o| ident(o, &["name", "source"]));
 
-    let mut out: Vec<Item> = base_list.iter().filter_map(Value::as_object).filter_map(item_record).collect();
+    let mut out: Vec<Item> = base_list.iter().filter_map(Value::as_object).filter_map(|o| item_record(&expand_item_entries(o.clone(), &templates))).collect();
     // Item groups ("Holy Symbol": amulet, emblem, reliquary) become generic items
     // modelled on their first member.
     let all_by_key: HashMap<String, &Obj> = base_list
@@ -1277,6 +1344,7 @@ pub fn items(base: &Value, items: &Value) -> Vec<Item> {
                 merged.insert(k.clone(), v.clone());
             }
         }
+        let merged = expand_item_entries(merged, &templates);
         if let Some(it) = item_record(&merged) {
             out.push(it);
         }
@@ -1296,6 +1364,7 @@ pub fn items(base: &Value, items: &Value) -> Vec<Item> {
             }
             None => o.clone(),
         };
+        let merged = expand_item_entries(merged, &templates);
         if let Some(it) = item_record(&merged) {
             out.push(it);
         }
@@ -1407,13 +1476,49 @@ pub fn extra_source(id: &str) -> SourceInfo {
     } else {
         SourceGroup::Partnered
     };
-    SourceInfo { id: id.to_string(), name: id.to_string(), group, published: None }
+    SourceInfo { id: id.to_string(), name: extra_source_name(id), group, published: None }
+}
+
+/// Titles of books that content cites but 5etools' book list doesn't
+/// include (5etools keeps these names in its site code). Players should
+/// never see a bare code.
+fn extra_source_name(id: &str) -> String {
+    let known = match id {
+        "EEPC" => "Elemental Evil Player's Companion",
+        "EET" => "Elemental Evil: Trinkets",
+        "HAT-LMI" => "Honor Among Thieves: Legendary Magic Items",
+        "MCV2DC" => "Monstrous Compendium Vol. 2: Dragonlance Creatures",
+        "RoTOS" => "The Rise of Tiamat Online Supplement",
+        "TftYP" => "Tales from the Yawning Portal",
+        _ => "",
+    };
+    if !known.is_empty() {
+        return known.to_string();
+    }
+    // "UATheMysticClass" → "Unearthed Arcana: The Mystic Class".
+    if let Some(rest) = id.strip_prefix("UA").or_else(|| id.strip_prefix("XUA")).filter(|r| !r.is_empty()) {
+        let mut words = String::new();
+        for (i, c) in rest.chars().enumerate() {
+            if i > 0 && c.is_ascii_uppercase() && !words.ends_with(' ') {
+                words.push(' ');
+            }
+            words.push(c);
+        }
+        return format!("Unearthed Arcana: {words}");
+    }
+    id.to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn unlisted_sources_get_titles() {
+        assert_eq!(extra_source_name("UATheMysticClass"), "Unearthed Arcana: The Mystic Class");
+        assert_eq!(extra_source_name("EEPC"), "Elemental Evil Player's Companion");
+    }
 
     #[test]
     fn step_totals() {

@@ -9,7 +9,7 @@ mod patches;
 mod records;
 mod text;
 
-use compendium::{Compendium, Record, Table};
+use compendium::{Compendium, Record, Subclass, Table};
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -107,6 +107,26 @@ fn build(dir: &Path) -> Compendium {
         languages: Table::new(records::languages(&load(dir, "languages.json"))),
         rules: Table::new(records::rules(&load(dir, "skills.json"), &load(dir, "items-base.json"), &load(dir, "conditionsdiseases.json"), &load(dir, "senses.json"))),
     };
+
+    // 5etools disambiguates a few names with a book code ("Ambition Domain
+    // (PSA)", "Pyromancer (PSK)"). The book is shown on its own, so drop it.
+    let codes: BTreeSet<String> = c.sources.iter().map(|s| s.id.to_lowercase()).collect();
+    let clean = |n: &mut String| {
+        if let Some((base, code)) = n.rsplit_once(" (") {
+            if codes.contains(&code.trim_end_matches(')').to_lowercase()) {
+                *n = base.to_string();
+            }
+        }
+    };
+    let mut subs: Vec<Subclass> = c.subclasses.iter().cloned().collect();
+    for sc in &mut subs {
+        clean(&mut sc.name);
+        clean(&mut sc.short_name);
+        for f in &mut sc.features {
+            clean(&mut f.name);
+        }
+    }
+    c.subclasses = Table::new(subs);
 
     // Keep only sources that content actually uses, and add unknown ones.
     let mut used = BTreeSet::new();

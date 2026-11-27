@@ -472,7 +472,7 @@ fn BasicsStep() -> impl IntoView {
                             let id = s.id.clone();
                             let id2 = s.id.clone();
                             view! {
-                                <label class="source" title=s.id.clone()>
+                                <label class="source" title=s.published.clone().map(|d| format!("Published {}", d.split('-').next().unwrap_or(&d)))>
                                     <input type="checkbox"
                                         prop:checked=move || ctx.ch.with(|c| c.settings.source_enabled(&id))
                                         on:change=move |ev| { let on = event_target_checked(&ev); let id = id2.clone(); ctx.edit(|c| { if on { c.settings.disabled_sources.remove(&id); } else { c.settings.disabled_sources.insert(id); } }) } />
@@ -633,7 +633,7 @@ fn LevelsPanel() -> impl IntoView {
         rules::browse::classes(ch, &comp)
             .into_iter()
             .map(|o| {
-                let src = comp.classes.get(&Key(o.value.clone())).map(|c| c.source.clone()).unwrap_or_default();
+                let src = comp.classes.get(&Key(o.value.clone())).map(|c| comp.source_name(&c.source)).unwrap_or_default();
                 (o.value.clone(), format!("{} ({src})", o.label), o.older.is_some())
             })
             .partition(|x| x.2)
