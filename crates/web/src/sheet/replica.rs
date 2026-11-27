@@ -1027,7 +1027,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         if let Some(a) = s.attacks.get(i) {
             let bl = y - 3.0;
             g.value(228.6, bl, 103.0, 8.0, Anchor::Start, &a.name);
-            g.value(358.2, bl, 42.0, 8.0, Anchor::Middle, &signed(a.bonus));
+            g.value(358.2, bl, 42.0, 8.0, Anchor::Middle, &a.to_hit());
             g.value(384.7, bl, 72.5, 7.5, Anchor::Start, &a.damage);
             g.value(462.5, bl, 122.5, 6.5, Anchor::Start, &a.notes);
         }

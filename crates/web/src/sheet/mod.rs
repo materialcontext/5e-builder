@@ -9,7 +9,7 @@ use crate::app::logo;
 use crate::editor::icon;
 use crate::entries::Entries;
 use crate::store::Store;
-use compendium::{signed, Compendium, Entry};
+use compendium::{Compendium, Entry};
 use leptos::prelude::*;
 use replica::Overflow;
 use rules::build::FeatureKind;
@@ -230,7 +230,7 @@ fn continuation_page(s: &Sheet, of: Overflow) -> impl IntoView {
         let rows = of
             .attacks
             .iter()
-            .map(|a| view! { <tr><td class="strong">{a.name.clone()}</td><td class="c">{signed(a.bonus)}</td><td>{a.damage.clone()}</td><td>{a.notes.clone()}</td></tr> })
+            .map(|a| view! { <tr><td class="strong">{a.name.clone()}</td><td class="c">{a.to_hit()}</td><td>{a.damage.clone()}</td><td>{a.notes.clone()}</td></tr> })
             .collect_view();
         view! {
             <section class="rp-group">

@@ -34,6 +34,8 @@ pub struct SkillLine {
 pub struct Attack {
     pub name: String,
     pub bonus: i32,
+    /// For saving-throw spells: the save DC and ability (shown instead of a bonus).
+    pub save: Option<(i32, Ability)>,
     pub damage: String,
     pub notes: String,
 }
@@ -592,14 +594,76 @@ fn attacks(ch: &Character, build: &Build, comp: &Compendium, pb: i32, profs: &[S
         if !prof {
             notes.push("not proficient".into());
         }
-        out.push(Attack { name: inv.name.clone(), bonus, damage, notes: notes.join(", ") });
+        out.push(Attack { name: inv.name.clone(), bonus, save: None, damage, notes: notes.join(", ") });
     }
     out.push(Attack {
         name: "Unarmed Strike".into(),
         bonus: m(Ability::Str) + pb,
+        save: None,
         damage: format!("{} bludgeoning", (1 + m(Ability::Str)).max(1)),
         notes: String::new(),
     });
+    out.extend(damage_cantrips(ch, build, comp, pb));
+    out
+}
+
+impl Attack {
+    /// "+5", or "DC 13 DEX" for a saving-throw spell.
+    pub fn to_hit(&self) -> String {
+        match self.save {
+            Some((dc, a)) => format!("DC {dc} {}", a.abbr()),
+            None => signed(self.bonus),
+        }
+    }
+}
+
+/// Every damage-dealing cantrip the character has (class, feat, species…),
+/// with its spell attack bonus or save DC and its dice at the character's level.
+fn damage_cantrips(ch: &Character, build: &Build, comp: &Compendium, pb: i32) -> Vec<Attack> {
+    let level = ch.total_level().max(1);
+    let first_casting = build.spells.iter().find_map(|k| k.class.as_ref().and_then(|c| comp.classes.get(c)).and_then(|c| c.spellcasting.ability));
+    let mut out: Vec<Attack> = Vec::new();
+    for k in &build.spells {
+        let Some(sp) = comp.spells.get(&k.key) else { continue };
+        if sp.level != 0 || sp.damage.is_empty() || (sp.attack.is_empty() && sp.save.is_empty()) || out.iter().any(|a| a.name == sp.name) {
+            continue;
+        }
+        let ability = k
+            .ability
+            .or_else(|| k.class.as_ref().and_then(|c| comp.classes.get(c)).and_then(|c| c.spellcasting.ability))
+            .or(first_casting)
+            .unwrap_or(Ability::Int);
+        let m = build.modifier(ability);
+        let at = |steps: &[(u8, String)]| steps.iter().filter(|(l, _)| *l <= level).last().map(|(_, d)| d.clone());
+        let dice: Vec<String> = sp.scaling.iter().filter_map(|(_, steps)| at(steps)).collect();
+        let types = sp.damage.join(" or ");
+        let mut notes = vec![sp.range.clone()];
+        let mut damage = match dice.as_slice() {
+            [] => format!("{} {types}", sp.base_damage.clone().unwrap_or_default()),
+            [one] => format!("{one} {types}"),
+            [first, rest @ ..] => {
+                // Toll the Dead: the second line applies to a wounded target.
+                format!("{first} {types} ({} if already damaged)", rest.join(", "))
+            }
+        };
+        if sp.name == "Eldritch Blast" {
+            let beams = match level {
+                1..=4 => 1,
+                5..=10 => 2,
+                11..=16 => 3,
+                _ => 4,
+            };
+            if build.has_feature_named("Agonizing Blast") && m != 0 {
+                damage = format!("{}{} force", sp.base_damage.clone().unwrap_or_else(|| "1d10".into()), signed(m));
+            }
+            notes.push(format!("{beams} beam{} (separate attacks)", if beams > 1 { "s" } else { "" }));
+        }
+        let save = sp.save.first().and_then(|a| Ability::parse(a)).map(|a| (8 + pb + m, a));
+        if let Some((_, a)) = save {
+            notes.push(format!("{} save", a.name()));
+        }
+        out.push(Attack { name: sp.name.clone(), bonus: pb + m, save, damage: damage.trim().to_string(), notes: notes.join(", ") });
+    }
     out
 }
 

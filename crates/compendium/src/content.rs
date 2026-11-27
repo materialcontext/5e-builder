@@ -319,6 +319,20 @@ pub struct Spell {
     /// Spell attack kinds: `m` (melee), `r` (ranged).
     #[serde(default)]
     pub attack: Vec<String>,
+    /// Abilities of the saving throw the spell forces (lowercase names).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub save: Vec<String>,
+    /// Damage types it deals (lowercase).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub damage: Vec<String>,
+    /// Damage dice by character level (cantrips: 1, 5, 11, 17), per damage
+    /// line, e.g. ("Fire damage", [(1, "1d10"), (5, "2d10"), ...]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scaling: Vec<(String, Vec<(u8, String)>)>,
+    /// The first damage roll in its text, when it has no scaling table
+    /// (e.g. Eldritch Blast's 1d10 per beam).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_damage: Option<String>,
     /// Lowercase class names whose list includes this spell.
     pub classes: Vec<String>,
     pub body: Vec<Entry>,

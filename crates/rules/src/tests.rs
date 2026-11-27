@@ -1059,3 +1059,26 @@ fn custom_additions_apply_outside_the_rules() {
     assert_eq!(s.hp_max, s0.hp_max + 5);
     assert_eq!(s.armor_class, s0.armor_class + 1);
 }
+
+#[test]
+fn damage_cantrips_are_listed_with_attacks() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("wizard|xphb", "sage|xphb", "elf|xphb");
+    ch.abilities.scores = [8, 14, 13, 16, 12, 10];
+    for _ in 1..5 {
+        ch.level_up(Key("wizard|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let path = build(&ch, comp).choices.iter().find(|c| c.path.ends_with("/cantrips") && c.path.starts_with("class:wizard")).unwrap().path.clone();
+    ch.set_choice(&path, vec!["fire bolt|xphb".into(), "acid splash|xphb".into(), "mage hand|xphb".into(), "light|xphb".into()]);
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    let int = b.modifier(Ability::Int);
+    let fire = s.attacks.iter().find(|a| a.name == "Fire Bolt").expect("Fire Bolt on the attack list");
+    assert_eq!(fire.to_hit(), signed(3 + int), "proficiency 3 at level 5 + Int");
+    assert_eq!(fire.damage, "2d10 fire", "scales at level 5");
+    let acid = s.attacks.iter().find(|a| a.name == "Acid Splash").expect("Acid Splash on the attack list");
+    assert_eq!(acid.to_hit(), format!("DC {} DEX", 8 + 3 + int));
+    assert_eq!(acid.damage, "2d6 acid");
+    assert!(!s.attacks.iter().any(|a| a.name == "Mage Hand" || a.name == "Light"), "no damage, no row");
+}

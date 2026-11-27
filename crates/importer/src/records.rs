@@ -1022,6 +1022,38 @@ fn spell_duration(o: &Obj) -> (String, bool) {
     (text, conc)
 }
 
+/// `scalingLevelDice`: one object or a list of `{label, scaling: {"1": "1d10", "5": "2d10", ...}}`.
+fn spell_scaling(v: Option<&Value>) -> Vec<(String, Vec<(u8, String)>)> {
+    let items: Vec<&Value> = match v {
+        Some(Value::Array(a)) => a.iter().collect(),
+        Some(o @ Value::Object(_)) => vec![o],
+        _ => return vec![],
+    };
+    items
+        .into_iter()
+        .filter_map(|it| {
+            let label = it.get("label").and_then(Value::as_str).unwrap_or("Damage").to_string();
+            let mut steps: Vec<(u8, String)> = it
+                .get("scaling")?
+                .as_object()?
+                .iter()
+                .filter_map(|(lvl, dice)| Some((lvl.parse().ok()?, dice.as_str()?.to_string())))
+                .collect();
+            steps.sort_by_key(|(l, _)| *l);
+            Some((label, steps))
+        })
+        .collect()
+}
+
+/// The first `{@damage XdY}` in a spell's text.
+fn first_damage_roll(entries: Option<&Value>) -> Option<String> {
+    let text = entries?.to_string();
+    let i = text.find("{@damage ")?;
+    let rest = &text[i + 9..];
+    let end = rest.find(['}', '|'])?;
+    Some(rest[..end].trim().to_string())
+}
+
 pub fn spells(files: &[Value], lookup: &Value) -> Vec<Spell> {
     let mut out = Vec::new();
     for f in files {
@@ -1058,6 +1090,18 @@ pub fn spells(files: &[Value], lookup: &Value) -> Vec<Spell> {
                     .and_then(Value::as_array)
                     .map(|a| a.iter().filter_map(Value::as_str).map(|x| x.to_lowercase()).collect())
                     .unwrap_or_default(),
+                save: o
+                    .get("savingThrow")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(Value::as_str).map(|x| x.to_lowercase()).collect())
+                    .unwrap_or_default(),
+                damage: o
+                    .get("damageInflict")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(Value::as_str).map(|x| x.to_lowercase()).collect())
+                    .unwrap_or_default(),
+                scaling: spell_scaling(o.get("scalingLevelDice")),
+                base_damage: first_damage_roll(o.get("entries")),
                 classes: classes.into_iter().collect(),
                 body,
                 name,
