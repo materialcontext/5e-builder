@@ -1842,11 +1842,9 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
             } else {
                 i.name.clone()
             },
-            tag: match (i.equipped, i.attuned) {
-                (_, true) => "attuned".into(),
-                (true, _) => "equipped".into(),
-                _ => String::new(),
-            },
+            // No equipped/attuned marks: what's equipped changes during play,
+            // and attunement has its own lines below the list.
+            tag: String::new(),
             detail: i.notes.clone(),
         })
         .collect();

@@ -38,7 +38,8 @@ pub fn SheetPage(id: String) -> impl IntoView {
         feature_text: RwSignal::new(true),
         spell_text: RwSignal::new(false),
         a4: RwSignal::new(false),
-        tint: RwSignal::new(true),
+        // Off by default: a full-page grey background wastes ink.
+        tint: RwSignal::new(false),
     };
     let b = rules::build(&ch, &comp);
     let s = rules::sheet(&ch, &b, &comp);
@@ -80,7 +81,7 @@ pub fn SheetPage(id: String) -> impl IntoView {
                 <div class="switches" role="group" aria-label="Sheet options">
                     {toggle("Feature text", o.feature_text)}
                     {toggle("Spell descriptions", o.spell_text)}
-                    {toggle("Grey page tint", o.tint)}
+                    {toggle("Grey background (uses more ink)", o.tint)}
                     {toggle("A4 paper", o.a4)}
                 </div>
                 <button class="button primary" on:click=move |_| { if let Some(w) = web_sys::window() { let _ = w.print(); } }>{icon("print")}"Print or save PDF"</button>
