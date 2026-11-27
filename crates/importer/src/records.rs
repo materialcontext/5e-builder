@@ -294,7 +294,7 @@ pub fn feats(data: &Value) -> Vec<Feat> {
         if !versions.is_empty() && !has_alternatives {
             let bundles = versions
                 .iter()
-                .map(|f| Bundle { name: f.name.rsplit("; ").next().unwrap_or(&f.name).to_string(), grants: vec![Grant::Feat(f.key.clone())] })
+                .map(|f| Bundle::new(f.name.rsplit("; ").next().unwrap_or(&f.name), vec![Grant::Feat(f.key.clone())]))
                 .collect();
             base.grants.push(choose("feat.version", "Option", 1, Options::Bundles(bundles)));
         }
@@ -501,7 +501,6 @@ fn split_subfeature_refs(v: &Value) -> (Value, Vec<String>) {
 
 struct FeatureCtx<'a> {
     refs: &'a Refs,
-    legacy_class: bool,
 }
 
 fn feature_record(f: &Obj, level: u8, subclass_slot: bool, ctx: &FeatureCtx, path: &str) -> ClassFeature {
@@ -512,10 +511,10 @@ fn feature_record(f: &Obj, level: u8, subclass_slot: bool, ctx: &FeatureCtx, pat
     match name.as_str() {
         _ if !auto => {}
         "Ability Score Improvement" => {
-            let mut cats = vec!["G".to_string()];
-            if ctx.legacy_class {
-                cats.push(String::new());
-            }
+            // General feats, plus older uncategorised feats: under the 2024
+            // rules an older feat may be taken where it has no 2024 version
+            // (reprints are filtered out when options are listed).
+            let cats = vec!["G".to_string(), String::new()];
             grants.push(choose(&format!("{path}.asi"), "Ability Score Improvement or feat", 1, Options::Feats { categories: cats }));
         }
         "Expertise" => grants.push(choose(&format!("{path}.expertise"), "Expertise", 2, Options::SkillExpertise)),
@@ -535,7 +534,7 @@ fn feature_record(f: &Obj, level: u8, subclass_slot: bool, ctx: &FeatureCtx, pat
                 };
                 let mut bg = vec![Grant::Feature(feature)];
                 bg.extend(common_grants(sub, &format!("{path}.opt{i}")));
-                Some(Bundle { name: s(sub, "name").to_string(), grants: bg })
+                Some(Bundle::new(s(sub, "name"), bg))
             })
             .collect();
         if !bundles.is_empty() {
@@ -651,7 +650,7 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
         let name = s(c, "name").to_string();
         let source = s(c, "source").to_string();
         let key = Key::new(&name, &source);
-        let ctx = FeatureCtx { refs: &refs, legacy_class: legacy(c) };
+        let ctx = FeatureCtx { refs: &refs };
         let mut features = Vec::new();
         for (i, cf) in c.get("classFeatures").and_then(Value::as_array).into_iter().flatten().enumerate() {
             let (uid, slot) = match cf {
@@ -697,8 +696,8 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
                     "Starting equipment or gold",
                     1,
                     Options::Bundles(vec![
-                        Bundle { name: "Class starting equipment".into(), grants: equipment },
-                        Bundle { name: format!("Gold instead ({text}, average {})", compendium::format_coins(avg)), grants: vec![Grant::Coins(avg)] },
+                        Bundle::new("Class starting equipment", equipment),
+                        Bundle::new(format!("Gold instead ({text}, average {})", compendium::format_coins(avg)), vec![Grant::Coins(avg)]),
                     ]),
                 )];
             }
@@ -777,8 +776,10 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             "" => "phb",
             x => x,
         });
-        let Some(legacy_class) = out_classes.iter().find(|c| c.key == class_key).map(|c| c.legacy) else { continue };
-        let ctx = FeatureCtx { refs: &refs, legacy_class };
+        if !out_classes.iter().any(|c| c.key == class_key) {
+            continue;
+        }
+        let ctx = FeatureCtx { refs: &refs };
         let mut features = Vec::new();
         for (i, uid) in sc.get("subclassFeatures").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).enumerate() {
             let Some(f) = refs.lookup(&normalize_uid(uid, true)).and_then(Value::as_object) else {

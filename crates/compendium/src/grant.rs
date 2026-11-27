@@ -176,6 +176,20 @@ pub enum Options {
 pub struct Bundle {
     pub name: String,
     pub grants: Vec<Grant>,
+    /// Lowest scope level (class level for class choices) at which this
+    /// option may be picked; 0 for no restriction.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub min_level: u8,
+}
+
+impl Bundle {
+    pub fn new(name: impl Into<String>, grants: Vec<Grant>) -> Self {
+        Bundle { name: name.into(), grants, min_level: 0 }
+    }
+}
+
+fn is_zero(n: &u8) -> bool {
+    *n == 0
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

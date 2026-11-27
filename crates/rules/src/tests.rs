@@ -752,3 +752,69 @@ fn class_features_name_the_level_they_were_gained() {
     let sub = b.features.iter().find(|f| f.origin.contains('(')).expect("subclass feature");
     assert!(sub.origin.starts_with("Fighter 3 ("), "{}", sub.origin);
 }
+
+#[test]
+fn older_subclasses_follow_2024_subclass_levels() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("cleric|xphb", "acolyte|xphb", "human|xphb");
+    for _ in 1..3 {
+        ch.level_up(Key("cleric|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let path = build(&ch, comp).choices.iter().find(|c| matches!(c.options, Options::Subclass { .. })).expect("subclass at 3").path.clone();
+    ch.set_choice(&path, vec!["life|phb|cleric|xphb".into()]);
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    // The 2014 Life Domain's level 1 features arrive with the subclass at level 3.
+    let disciple = b.features.iter().find(|f| f.feature.name == "Disciple of Life").expect("Disciple of Life");
+    assert_eq!(disciple.origin, "Cleric 3 (Life)");
+    assert!(b.features.iter().all(|f| !f.origin.contains("Cleric 1 (")), "no subclass feature before level 3");
+}
+
+#[test]
+fn older_feats_only_where_not_reprinted() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+    for _ in 1..4 {
+        ch.level_up(Key("fighter|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let asi = b.choices.iter().find(|c| c.path.ends_with(".asi") && matches!(c.options, Options::Feats { .. })).expect("level 4 feat choice");
+    let opts = options(asi, &b, &ch, comp);
+    let has = |k: &str| opts.iter().any(|o| o.value == k);
+    assert!(has("mobile|phb"), "2014 Mobile has no 2024 version");
+    assert!(has("sharpshooter|xphb") && !has("sharpshooter|phb"), "2024 reprint replaces the 2014 feat");
+    assert!(!has("alert|phb"), "2014 Alert gives way to the 2024 Origin feat");
+}
+
+#[test]
+fn sheet_shows_only_chosen_options() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "dragonborn|phb");
+    for _ in 1..3 {
+        ch.level_up(Key("fighter|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let path = build(&ch, comp).choices.iter().find(|c| matches!(c.options, Options::Subclass { .. })).unwrap().path.clone();
+    ch.set_choice(&path, vec!["battle master|xphb|fighter|xphb".into()]);
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    let names: Vec<&str> = s.features.iter().map(|f| f.feature.name.as_str()).collect();
+    // The catalog of every maneuver is gone; the three chosen maneuvers remain.
+    assert!(!names.contains(&"Maneuver Options"), "{names:?}");
+    let chosen = b.optional_features.len();
+    assert_eq!(chosen, 3, "{:?}", b.optional_features);
+    for (k, _) in &b.optional_features {
+        let n = &comp.optional_features.get(k).unwrap().name;
+        assert!(names.contains(&n.as_str()), "{n} missing from {names:?}");
+    }
+    // The 2014 dragonborn's ancestry table keeps only the chosen dragon.
+    let anc = s.features.iter().find(|f| f.feature.name == "Draconic Ancestry").expect("ancestry");
+    let rows: usize = anc.feature.body.iter().map(|e| match e {
+        compendium::Entry::Table { rows, .. } => rows.len(),
+        _ => 0,
+    }).sum();
+    assert_eq!(rows, 1, "{:?}", anc.feature.body);
+}

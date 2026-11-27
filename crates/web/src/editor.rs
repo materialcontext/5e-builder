@@ -465,7 +465,7 @@ fn BasicsStep() -> impl IntoView {
                 on:input=move |ev| { let v = event_target_value(&ev); ctx.edit(|c| c.details.player = v) } />
         </label>
         <h2>"Rules"</h2>
-        <p class="muted">"The wizard follows the 2024 Player's Handbook. Older (legacy) species, backgrounds, classes and subclasses are available too and are adapted to the 2024 rules."</p>
+        <p class="muted">"The wizard follows the 2024 Player's Handbook. Older (legacy) species, backgrounds, subclasses and feats are available too and follow the 2024 rules for older material: older subclasses are taken at level 3 with any earlier features, and where something was reprinted in 2024 the reprint is used."</p>
         <label class="toggle">
             <input type="checkbox" prop:checked=move || ctx.ch.with(|c| c.settings.legacy_species_asi)
                 on:change=move |ev| { let on = event_target_checked(&ev); ctx.edit(|c| c.settings.legacy_species_asi = on) } />
@@ -547,6 +547,9 @@ fn ClassStep() -> impl IntoView {
             c1.classes
                 .iter()
                 .filter(|c| enabled.source_enabled(&c.source))
+                // 2014 classes reprinted in 2024 give way to the reprint (their
+                // subclasses are offered on it); keep one already in use visible.
+                .filter(|c| c1.replacement_class(&c.key).is_none() || ctx.ch.with(|ch| ch.levels.iter().any(|l| l.class == c.key)))
                 .map(|c| Card {
                     key: c.key.clone(),
                     name: c.name.clone(),
@@ -582,6 +585,12 @@ fn ClassStep() -> impl IntoView {
                     </div>
                     <button class="button ghost" on:click=move |_| browsing.set(true)>"Change class"</button>
                 </div>
+                {c2.replacement_class(&class.key).map(|n| view! {
+                    <p class="note">{format!(
+                        "This is the 2014 {}. The 2024 rules use the {} ({}) instead, and every older {} subclass is available there, gaining its features from level 3.",
+                        class.name, n.name, c2.source_name(&n.source), class.name
+                    )}</p>
+                })}
                 <p>
                     {format!("Hit die d{} · Saves: {}", class.hit_die, class.saves.iter().map(|a| a.name()).collect::<Vec<_>>().join(", "))}
                     {(!class.multiclass_abilities.is_empty()).then(|| format!(" · Multiclassing: {}", class.multiclass_abilities.iter().map(|g| g.iter().map(|(a, n)| format!("{} {n}", a.abbr())).collect::<Vec<_>>().join(" or ")).collect::<Vec<_>>().join(", ")))}
@@ -641,11 +650,14 @@ fn LevelsPanel() -> impl IntoView {
             .collect_view();
         view! { <ol class="levels">{rows}</ol> }
     };
-    let options = comp
-        .classes
-        .iter()
-        .map(|c| (c.key.0.clone(), format!("{} ({})", c.name, c.source)))
-        .collect::<Vec<_>>();
+    let options = ctx.ch.with_untracked(|ch| {
+        comp.classes
+            .iter()
+            .filter(|c| ch.settings.source_enabled(&c.source))
+            .filter(|c| comp.replacement_class(&c.key).is_none() || ch.levels.iter().any(|l| l.class == c.key))
+            .map(|c| (c.key.0.clone(), format!("{} ({})", c.name, c.source)))
+            .collect::<Vec<_>>()
+    });
     view! {
         <div class="levels-panel">
             <div class="row">

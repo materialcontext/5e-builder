@@ -10,6 +10,7 @@ pub mod character;
 pub mod options;
 pub mod sheet;
 pub mod spellcasting;
+pub mod selections;
 pub mod suggest;
 
 pub use build::{build, Build, ChoiceState, Step};

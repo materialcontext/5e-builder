@@ -116,6 +116,16 @@ impl Compendium {
         self.source(id).map(|s| s.name.clone()).unwrap_or_else(|| id.to_string())
     }
 
+    /// The 2024 class that replaces an older (legacy) class, if it was
+    /// reprinted. Under the 2024 rules the reprint is used, and the older
+    /// class's subclasses are all available on it.
+    pub fn replacement_class(&self, class: &Key) -> Option<&Class> {
+        let old = self.classes.get(class).filter(|c| c.legacy)?;
+        let mut newer: Vec<&Class> = self.classes.iter().filter(|c| !c.legacy && c.name == old.name).collect();
+        newer.sort_by_key(|c| !matches!(c.source.as_str(), "XPHB" | "EFA"));
+        newer.into_iter().next()
+    }
+
     /// Subclasses available to a class (including borrowed ones).
     pub fn subclasses_of<'a>(&'a self, class: &'a Key) -> impl Iterator<Item = &'a Subclass> + 'a {
         let borrowed: Vec<Key> = self.classes.get(class).map(|c| c.subclass_from.clone()).unwrap_or_default();

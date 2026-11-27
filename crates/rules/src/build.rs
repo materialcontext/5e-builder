@@ -250,7 +250,7 @@ impl<'a> Walker<'a> {
                 id: "size".into(),
                 label: "Size".into(),
                 count: Count::Fixed(1),
-                options: Options::Bundles(sp.sizes.iter().map(|s| Bundle { name: s.name().into(), grants: vec![] }).collect()),
+                options: Options::Bundles(sp.sizes.iter().map(|s| Bundle::new(s.name(), vec![])).collect()),
             };
             self.register(&c, &ctx);
         }
@@ -389,8 +389,8 @@ impl<'a> Walker<'a> {
                         label: format!("Optional feature: {}", f.name),
                         count: Count::Fixed(1),
                         options: Options::Bundles(vec![
-                            Bundle { name: "Use it".into(), grants: use_it },
-                            Bundle { name: "Don't use it".into(), grants: vec![] },
+                            Bundle::new("Use it", use_it),
+                            Bundle::new("Don't use it", vec![]),
                         ]),
                     };
                     self.choose(&c, &fctx);
@@ -429,7 +429,7 @@ impl<'a> Walker<'a> {
                     if let Some(sub) = selected.and_then(|s| self.comp.subclasses.get(&Key(s.clone()))) {
                         if sub.class == key {
                             state.subclass = Some(sub.key.clone());
-                            self.subclass(sub, &base, &path, level, class.legacy, &at);
+                            self.subclass(sub, &base, &path, level, sub_level, class.legacy, &at);
                         }
                     }
                 }
@@ -438,7 +438,12 @@ impl<'a> Walker<'a> {
         }
     }
 
-    fn subclass(&mut self, sub: &Subclass, base: &Ctx, choice_path: &str, level: u8, legacy: bool, at: &dyn Fn(u8) -> u8) {
+    /// `sub_level` is the class level at which the subclass is chosen. Under
+    /// the 2024 rules you gain each subclass feature "of your class level or
+    /// lower" when you take the subclass, so an older (2014) subclass's level 1
+    /// or 2 features arrive with it at level 3.
+    #[allow(clippy::too_many_arguments)]
+    fn subclass(&mut self, sub: &Subclass, base: &Ctx, choice_path: &str, level: u8, sub_level: u8, legacy: bool, at: &dyn Fn(u8) -> u8) {
         let sctx = Ctx {
             path: format!("{choice_path}/{}", sub.key),
             origin: format!("{} ({})", base.origin, sub.short_name),
@@ -452,7 +457,8 @@ impl<'a> Walker<'a> {
         let g = sub.grants.clone();
         self.walk(&g, &sctx);
         for (fi, f) in sub.features.iter().enumerate().filter(|(_, f)| f.level <= level) {
-            let fctx = Ctx { gained_at: at(f.level), origin: at_class_level(&sctx.origin, f.level), ..sctx.child(&format!("f{fi}")) };
+            let gained = f.level.max(sub_level);
+            let fctx = Ctx { gained_at: at(gained), origin: at_class_level(&sctx.origin, gained), ..sctx.child(&format!("f{fi}")) };
             self.feature(Feature { name: f.name.clone(), body: f.body.clone() }, &fctx);
             self.walk(&f.grants, &fctx);
         }
@@ -936,6 +942,7 @@ pub fn standard_background_asi() -> Choice {
             count: Count::Fixed(1),
             options: Options::Abilities { from: all.clone(), amounts, max: None },
         })],
+        min_level: 0,
     };
     Choice {
         id: "asi".into(),

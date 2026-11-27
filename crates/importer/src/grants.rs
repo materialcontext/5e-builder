@@ -22,7 +22,7 @@ pub fn alternatives(v: Option<&Value>, id: &str, label: &str, f: impl Fn(&Obj, &
                 .enumerate()
                 .map(|(i, o)| {
                     let grants = f(o, &format!("{id}.{i}"));
-                    Bundle { name: describe(&grants), grants }
+                    Bundle::new(describe(&grants), grants)
                 })
                 .collect();
             vec![choose(id, label, 1, Options::Bundles(bundles))]
@@ -399,7 +399,7 @@ pub fn additional_spells(v: Option<&Value>, id: &str) -> Vec<Grant> {
                         })
                         .collect();
                     let name = g.name.clone().unwrap_or_else(|| if fixed.is_empty() { format!("Option {}", i + 1) } else { fixed.join(", ") });
-                    Bundle { name, grants: vec![Grant::Spells(g)] }
+                    Bundle::new(name, vec![Grant::Spells(g)])
                 })
                 .collect();
             vec![choose(id, "Spells", 1, Options::Bundles(bundles))]
@@ -480,7 +480,7 @@ pub fn equipment(v: Option<&Value>, id: &str) -> Vec<Grant> {
                     .enumerate()
                     .flat_map(|(i, x)| item_spec(x, &format!("{id}.{bi}.{k}{i}")))
                     .collect();
-                Bundle { name: format!("({}) {}", k.to_uppercase(), describe(&grants)), grants }
+                Bundle::new(format!("({}) {}", k.to_uppercase(), describe(&grants)), grants)
             })
             .collect();
         out.push(choose(&format!("{id}.{bi}"), "Starting equipment", 1, Options::Bundles(bundles)));

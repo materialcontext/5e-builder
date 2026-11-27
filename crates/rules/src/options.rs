@@ -252,6 +252,9 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                     o.detail = summary;
                 }
                 o.body = feats;
+                if b.min_level > scope_level(choice, ch) && !choice.selected.contains(&b.name) {
+                    o.disabled = Some(format!("Requires level {}", b.min_level));
+                }
                 o
             })
             .collect(),
@@ -377,10 +380,15 @@ pub fn has_spellcasting_feature(build: &Build, comp: &Compendium) -> bool {
 
 fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Compendium) -> Vec<OptionItem> {
     let taken: BTreeSet<&Key> = build.feats.iter().map(|(k, _)| k).collect();
+    // Older (uncategorised) feats that were reprinted in 2024 give way to the
+    // reprint, whatever category the reprint landed in.
+    let reprinted: BTreeSet<String> =
+        comp.feats.iter().filter(|f| f.category.is_some() && ch.settings.source_enabled(&f.source)).map(|f| f.name.to_lowercase()).collect();
     let feats: Vec<&Feat> = comp
         .feats
         .iter()
         .filter(|f| f.version_of.is_none() && ch.settings.source_enabled(&f.source))
+        .filter(|f| f.category.is_some() || !reprinted.contains(&f.name.to_lowercase()))
         .filter(|f| {
             categories.is_empty()
                 || categories.iter().any(|c| match &f.category {
@@ -481,4 +489,15 @@ fn spell_options(filter: &SpellFilter, choice: &ChoiceState, build: &Build, ch: 
         (la, &a.label).cmp(&(lb, &b.label))
     });
     out
+}
+
+/// The level a choice's options are gated by: the class level for class
+/// choices (paths start with `class:<key>/`), the character level otherwise.
+fn scope_level(choice: &ChoiceState, ch: &Character) -> u8 {
+    choice
+        .path
+        .strip_prefix("class:")
+        .and_then(|rest| rest.split('/').next())
+        .map(|k| ch.class_level(&Key(k.to_string())))
+        .unwrap_or_else(|| ch.total_level())
 }

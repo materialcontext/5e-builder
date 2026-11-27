@@ -2,7 +2,8 @@
 
 A D&D 5e character builder, manager and printable character sheet, written in Rust.
 
-- **Creation wizard** following the 2024 Player's Handbook. Older (legacy) species, backgrounds, classes and subclasses can be used too and are adapted to the 2024 rules (legacy backgrounds get ability score increases and an origin feat; legacy species ability bonuses are optional).
+- **Creation wizard** following the 2024 Player's Handbook. Older (legacy) species, backgrounds, subclasses and feats can be used too, following the 2024 rules for older material: legacy backgrounds get ability score increases and an origin feat; legacy species ability bonuses are optional; older subclasses are taken at level 3 on the 2024 class and gain any level 1–2 features then; where something was reprinted in 2024 (classes, feats) the reprint is used.
+- **Selections, not menus**: wherever a feature says to choose (maneuvers, invocations, totem spirits, ancestries, artificer plans…), the sheet shows what was chosen.
 - **Every choice is tracked**: skills, tools, languages, ability score increases, feats and their sub-choices, fighting styles, invocations, weapon masteries, expertise, subclasses, spells, starting equipment. The wizard shows what is still missing on each step.
 - **Levels 1–20 and multiclassing**, with average or rolled hit points.
 - **Printable sheet**: a faithful replica of the official two-page 2024 character sheet layout, filled in, plus optional pages with full feature and spell text and a continuation page for anything that doesn't fit. Letter or A4; use the browser's *Print → Save as PDF*.
@@ -80,6 +81,10 @@ The output in `crates/web/dist` is a static site and can be hosted anywhere.
 ```sh
 cargo test --workspace --exclude web
 ```
+
+`cargo run -p rules --example selection_audit -- crates/web/public/compendium.json`
+builds every class × subclass at level 20 and every species and reports how
+feature text was cut down to the selections (and any menus left uncovered).
 
 `cargo run -p rules --example sample_characters -- crates/web/public/compendium.json`
 prints a few fully built characters (multiclass caster, level 20 fighter and

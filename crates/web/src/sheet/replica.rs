@@ -1041,10 +1041,13 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         _ => false,
     };
     let feature_items = |pick: &dyn Fn(&rules::build::FeatureEntry) -> bool, count: bool| -> Vec<Item> {
-        let mut out: Vec<(Item, usize)> = Vec::new();
+        let mut out: Vec<(Item, (usize, bool))> = Vec::new();
         for f in s.features.iter().filter(|f| pick(f)) {
-            if let Some(e) = out.iter_mut().find(|(i, _)| i.name == f.feature.name) {
-                e.1 += 1;
+            // Merge repeats, but never a subclass feature into a class feature
+            // of the same name (a legacy oath's own Channel Divinity options).
+            let sub = f.origin.contains('(');
+            if let Some(e) = out.iter_mut().find(|(i, s2)| i.name == f.feature.name && s2.1 == sub) {
+                e.1 .0 += 1;
                 continue;
             }
             let item = Item {
@@ -1052,10 +1055,10 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
                 tag: String::new(),
                 detail: summary(&f.feature.body),
             };
-            out.push((item, 1));
+            out.push((item, (1, sub)));
         }
         out.into_iter()
-            .map(|(mut i, n)| {
+            .map(|(mut i, (n, _))| {
                 if count && n > 1 {
                     i.name = format!("{} ×{n}", i.name);
                 }

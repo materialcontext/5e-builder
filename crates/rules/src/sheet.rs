@@ -429,7 +429,8 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         .collect();
     let carried_weight = inventory.iter().map(|i| i.weight).fold(0.0, |a, b| a + b);
 
-    let mut features = build.features.clone();
+    // Only what was chosen: menus in feature text are cut down to the selections.
+    let mut features = crate::selections::prune(build.features.clone(), &crate::selections::names(build, comp));
     features.sort_by_key(|f| match f.kind {
         FeatureKind::Class => 0,
         FeatureKind::Species => 1,

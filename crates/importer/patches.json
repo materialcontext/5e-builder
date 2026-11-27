@@ -618,6 +618,315 @@
      "disease"
     ]
    }
+  },
+  {
+   "match": {
+    "name": "Replicate Magic Item",
+    "className": "Artificer",
+    "classSource": "EFA"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "plans",
+       "label": "Plans Known",
+       "count": {
+        "ByLevel": [
+         0,
+         4,
+         4,
+         4,
+         4,
+         5,
+         5,
+         5,
+         5,
+         6,
+         6,
+         6,
+         6,
+         7,
+         7,
+         7,
+         7,
+         8,
+         8,
+         8
+        ]
+       },
+       "options": {
+        "Bundles": [
+         {
+          "name": "Alchemy Jug",
+          "grants": []
+         },
+         {
+          "name": "Bag of Holding",
+          "grants": []
+         },
+         {
+          "name": "Cap of Water Breathing",
+          "grants": []
+         },
+         {
+          "name": "Common magic item that isn't a Potion, a Scroll, or cursed*",
+          "grants": []
+         },
+         {
+          "name": "Goggles of Night",
+          "grants": []
+         },
+         {
+          "name": "Manifold Tool",
+          "grants": []
+         },
+         {
+          "name": "Repeating Shot",
+          "grants": []
+         },
+         {
+          "name": "Returning Weapon",
+          "grants": []
+         },
+         {
+          "name": "Rope of Climbing",
+          "grants": []
+         },
+         {
+          "name": "Sending Stones",
+          "grants": []
+         },
+         {
+          "name": "Shield +1",
+          "grants": []
+         },
+         {
+          "name": "Wand of Magic Detection",
+          "grants": []
+         },
+         {
+          "name": "Wand of Secrets",
+          "grants": []
+         },
+         {
+          "name": "Wand of the War Mage +1",
+          "grants": []
+         },
+         {
+          "name": "Weapon +1",
+          "grants": []
+         },
+         {
+          "name": "Wraps of Unarmed Power, +1",
+          "grants": []
+         },
+         {
+          "name": "Armor +1",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Boots of Elvenkind",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Boots of the Winding Path",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Cloak of Elvenkind",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Cloak of the Manta Ray",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Dazzling Weapon",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Eyes of Charming",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Eyes of Minute Seeing",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Gloves of Thievery",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Helm of Awareness",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Lantern of Revealing",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Mind Sharpener",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Necklace of Adaptation",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Pipes of Haunting",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Repulsion Shield",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Ring of Swimming",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Ring of Water Walking",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Sentinel Shield",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Spell-Refueling Ring",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Wand of Magic Missiles",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Wand of Web",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Weapon of Warning",
+          "grants": [],
+          "min_level": 6
+         },
+         {
+          "name": "Armor of Resistance",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Dagger of Venom",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Elven Chain",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Ring of Feather Falling",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Ring of Jumping",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Ring of Mind Shielding",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Shield, +2",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Uncommon Wondrous Item that isn't cursed*",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Wand of the War Mage, +2",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Weapon, +2",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Wraps of Unarmed Power, +2",
+          "grants": [],
+          "min_level": 10
+         },
+         {
+          "name": "Armor, +2",
+          "grants": [],
+          "min_level": 14
+         },
+         {
+          "name": "Arrow-Catching Shield",
+          "grants": [],
+          "min_level": 14
+         },
+         {
+          "name": "Flame Tongue",
+          "grants": [],
+          "min_level": 14
+         },
+         {
+          "name": "Rare Wondrous Item that isn't cursed*",
+          "grants": [],
+          "min_level": 14
+         },
+         {
+          "name": "Ring of Free Action",
+          "grants": [],
+          "min_level": 14
+         },
+         {
+          "name": "Ring of Protection",
+          "grants": [],
+          "min_level": 14
+         },
+         {
+          "name": "Ring of the Ram",
+          "grants": [],
+          "min_level": 14
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
   }
  ],
  "subclassFeature": [
@@ -2793,6 +3102,71 @@
      "radiant"
     ]
    }
+  },
+  {
+   "match": {
+    "name": "Dragon Ancestor",
+    "className": "Sorcerer",
+    "subclassShortName": "Draconic",
+    "subclassSource": "PHB"
+   },
+   "set": {
+    "_grants": [
+     {
+      "Choose": {
+       "id": "ancestor",
+       "label": "Dragon Ancestor",
+       "count": {
+        "Fixed": 1
+       },
+       "options": {
+        "Bundles": [
+         {
+          "name": "Black",
+          "grants": []
+         },
+         {
+          "name": "Blue",
+          "grants": []
+         },
+         {
+          "name": "Brass",
+          "grants": []
+         },
+         {
+          "name": "Bronze",
+          "grants": []
+         },
+         {
+          "name": "Copper",
+          "grants": []
+         },
+         {
+          "name": "Gold",
+          "grants": []
+         },
+         {
+          "name": "Green",
+          "grants": []
+         },
+         {
+          "name": "Red",
+          "grants": []
+         },
+         {
+          "name": "Silver",
+          "grants": []
+         },
+         {
+          "name": "White",
+          "grants": []
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
   }
  ],
  "race": [
@@ -3064,6 +3438,110 @@
       "AcBonus": {
        "amount": 1,
        "when": "Always"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "match": {
+    "name": "Dragonborn",
+    "source": "PHB"
+   },
+   "set": {
+    "resist": [],
+    "_grants": [
+     {
+      "Choose": {
+       "id": "ancestry",
+       "label": "Draconic Ancestry",
+       "count": {
+        "Fixed": 1
+       },
+       "options": {
+        "Bundles": [
+         {
+          "name": "Black",
+          "grants": [
+           {
+            "Resist": "acid"
+           }
+          ]
+         },
+         {
+          "name": "Blue",
+          "grants": [
+           {
+            "Resist": "lightning"
+           }
+          ]
+         },
+         {
+          "name": "Brass",
+          "grants": [
+           {
+            "Resist": "fire"
+           }
+          ]
+         },
+         {
+          "name": "Bronze",
+          "grants": [
+           {
+            "Resist": "lightning"
+           }
+          ]
+         },
+         {
+          "name": "Copper",
+          "grants": [
+           {
+            "Resist": "acid"
+           }
+          ]
+         },
+         {
+          "name": "Gold",
+          "grants": [
+           {
+            "Resist": "fire"
+           }
+          ]
+         },
+         {
+          "name": "Green",
+          "grants": [
+           {
+            "Resist": "poison"
+           }
+          ]
+         },
+         {
+          "name": "Red",
+          "grants": [
+           {
+            "Resist": "fire"
+           }
+          ]
+         },
+         {
+          "name": "Silver",
+          "grants": [
+           {
+            "Resist": "cold"
+           }
+          ]
+         },
+         {
+          "name": "White",
+          "grants": [
+           {
+            "Resist": "cold"
+           }
+          ]
+         }
+        ]
+       }
       }
      }
     ]
