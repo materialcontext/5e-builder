@@ -187,6 +187,20 @@ struct Walker<'a> {
     formulas: Vec<(usize, String, u8, Option<Ability>)>,
 }
 
+/// Rewrites a class origin ("Fighter 20" or "Fighter 20 (Battle Master)") to
+/// name the class level at which something was gained. Other origins
+/// ("Feat: Alert", species names) are returned unchanged.
+fn at_class_level(origin: &str, level: u8) -> String {
+    let (head, tail) = match origin.split_once(" (") {
+        Some((h, t)) => (h, format!(" ({t}")),
+        None => (origin, String::new()),
+    };
+    match head.rsplit_once(' ') {
+        Some((name, n)) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) => format!("{name} {level}{tail}"),
+        _ => origin.to_string(),
+    }
+}
+
 /// Expands a character against the compendium.
 pub fn build(ch: &Character, comp: &Compendium) -> Build {
     let mut w = Walker { ch, comp, out: Build::default(), depth: 0, formulas: Vec::new() };
@@ -365,7 +379,7 @@ impl<'a> Walker<'a> {
             self.walk(&g, &base);
 
             for (fi, f) in class.features.iter().enumerate().filter(|(_, f)| f.level <= level) {
-                let fctx = Ctx { gained_at: at(f.level), ..base.child(&format!("f{fi}")) };
+                let fctx = Ctx { gained_at: at(f.level), origin: at_class_level(&base.origin, f.level), ..base.child(&format!("f{fi}")) };
                 if f.optional {
                     // Optional class features (Tasha's) are opt-in.
                     let mut use_it = vec![Grant::Feature(Feature { name: f.name.clone(), body: f.body.clone() })];
@@ -438,7 +452,7 @@ impl<'a> Walker<'a> {
         let g = sub.grants.clone();
         self.walk(&g, &sctx);
         for (fi, f) in sub.features.iter().enumerate().filter(|(_, f)| f.level <= level) {
-            let fctx = Ctx { gained_at: at(f.level), ..sctx.child(&format!("f{fi}")) };
+            let fctx = Ctx { gained_at: at(f.level), origin: at_class_level(&sctx.origin, f.level), ..sctx.child(&format!("f{fi}")) };
             self.feature(Feature { name: f.name.clone(), body: f.body.clone() }, &fctx);
             self.walk(&f.grants, &fctx);
         }
@@ -588,7 +602,20 @@ impl<'a> Walker<'a> {
         let limit = if count == 0 { selected.len() } else { count as usize };
         let picked: Vec<String> = selected.into_iter().take(limit).collect();
         let child = Ctx { path: path.clone(), ..ctx.clone() };
-        self.expand_selection(&c.options, &picked, &child);
+        match (&c.count, &c.options) {
+            // Leveled picks (maneuvers, invocations…): each one is labelled with
+            // the class level at which it became available.
+            (Count::ByLevel(totals), Options::OptionalFeatures { .. } | Options::Feats { .. } | Options::WeaponMastery) => {
+                for (i, v) in picked.iter().enumerate() {
+                    let origin = match totals.iter().position(|n| *n as usize > i) {
+                        Some(l) => at_class_level(&ctx.origin, l as u8 + 1),
+                        None => ctx.origin.clone(),
+                    };
+                    self.expand_selection(&c.options, std::slice::from_ref(v), &Ctx { origin, ..child.clone() });
+                }
+            }
+            _ => self.expand_selection(&c.options, &picked, &child),
+        }
         path
     }
 
@@ -821,21 +848,32 @@ impl<'a> Walker<'a> {
     // ------------------------------------------------------------ finishing
 
     fn finish(&mut self) {
+        // Each increase has its own cap: 20 normally, higher only for the
+        // increase that comes with it (e.g. an Epic Boon's +1, max 30). Apply
+        // the low-capped increases first so the order of grants doesn't matter.
         let mut scores = [0i32; 6];
-        let mut max = [20i32; 6];
         for a in Ability::ALL {
             scores[a.index()] = self.ch.abilities.get(a) as i32;
         }
-        for g in &self.out.grants {
-            match &g.grant {
-                Grant::Ability { ability, amount } => scores[ability.index()] += *amount as i32,
-                Grant::AbilityMax { ability, max: m } => max[ability.index()] = max[ability.index()].max(*m as i32),
-                _ => {}
-            }
-        }
-        for a in Ability::ALL {
-            let base = self.ch.abilities.get(a) as i32;
-            scores[a.index()] = scores[a.index()].min(max[a.index()].max(base));
+        let grants = &self.out.grants;
+        let mut increases: Vec<(Ability, i32, i32)> = grants
+            .iter()
+            .enumerate()
+            .filter_map(|(i, g)| match &g.grant {
+                Grant::Ability { ability, amount } => {
+                    let cap = match grants.get(i + 1).map(|n| &n.grant) {
+                        Some(Grant::AbilityMax { ability: a, max }) if a == ability => *max as i32,
+                        _ => 20,
+                    };
+                    Some((*ability, *amount as i32, cap))
+                }
+                _ => None,
+            })
+            .collect();
+        increases.sort_by_key(|(_, _, cap)| *cap);
+        for (a, amount, cap) in increases {
+            let s = &mut scores[a.index()];
+            *s = if amount < 0 { *s + amount } else { (*s + amount).min(cap.max(*s)) };
         }
         self.out.scores = scores;
         // Spells with no ability of their own (e.g. Cartomancer's cantrip) use the

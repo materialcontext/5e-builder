@@ -99,10 +99,10 @@ Designers split sheet content into static, stable and volatile tiers and
 give volatile values the most room ([CMU essay][cmu-sheet],
 [No Dice Left Behind][ndlb]); infrequently used information should not get
 equal visual weight ([EN World discussion][enworld-design]).
-→ Page 1 holds everything used every turn (modifiers, saves, skills, AC,
-HP, attacks); writable boxes for volatile state (current/temp HP, hit dice
-spent, death saves, Heroic Inspiration, exhaustion, conditions, slots).
-Features, spells and story follow on later pages.
+→ The sheet replicates the official two-page 2024 layout (see below):
+page 1 holds everything used every turn; page 2 holds spells, story and
+equipment. Full feature/spell text and anything that does not fit follow on
+extra pages.
 
 **Make the number you roll the big number.** Players roll the modifier, not
 the score ([EN World][enworld-design]). → Modifiers are the largest figures.
@@ -113,18 +113,24 @@ and feats, adds attunement slots, and fits in two pages; reviewers praised the
 cleaner layout but noted grouped skills are harder for new players and the
 spell area has fewer lines ([Wargamer][wargamer-2024], [GamesRadar][gamesradar],
 [EN World thread][enworld-2024]).
-→ Skills grouped by ability by default with an alphabetical option; separate
-feature sections; three attunement slots; a full spell table with a
-"prepared" column and slot boxes; compact two-page mode for non-casters.
+→ Pages 1–2 are a measured replica of the 2024 sheet: every box, rule,
+label and marker sits at the coordinates of the official PDF (603 × 774 pt
+space, `crates/web/src/sheet/art.rs`), with labels set to the reference
+widths. Publisher logos, the illustrated banner and the copyright line are
+not reproduced; neutral ornaments and the character's name take their place.
+Scala Sans is replaced by Alegreya Sans / Alegreya Sans SC (OFL). Values
+shrink to fit their fields; lists drop one-line descriptions, then continue on
+a continuation page, rather than overflow.
 
 **Print like print.** Use `@page` for size and margins, `break-inside: avoid`
 for compact blocks (not whole sections), avoid forced breaks that leave empty
 pages, don't rely on colour, and test real print output
 ([MDN: paged media][mdn-paged], [Piccalil][piccalil-print],
 [Smashing][smashing-print], [MDN: color][mdn-color]).
-→ Letter/A4 switch, 0.4 in margins, every feature/spell card unbreakable,
-black-on-white with grey rules (prints in greyscale), minimum 7 pt text,
-verified via Chromium's PDF output.
+→ Letter/A4 switch (the replica scales to fit with ≥0.2 in margins), optional
+grey page tint like the original (off saves toner), black ink with grey
+rules (prints in greyscale), verified by overlaying Chromium's PDF output on
+the reference sheet.
 
 ## Tokens
 

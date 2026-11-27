@@ -152,10 +152,18 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                 .collect()
         }
         Options::Weapons(list) => list.iter().map(|w| prof_item(Prof::Weapon(w.clone()), title_case(w))).collect(),
-        Options::Abilities { from, .. } => from
-            .iter()
-            .map(|a| OptionItem::new(a.id(), a.name()).detail(format!("{} {}", build.score(*a), signed(build.modifier(*a)))))
-            .collect(),
+        Options::Abilities { from, max, .. } => {
+            let cap = max.map(|m| m as i32).unwrap_or(20);
+            from.iter()
+                .map(|a| {
+                    let mut it = OptionItem::new(a.id(), a.name()).detail(format!("{} {}", build.score(*a), signed(build.modifier(*a))));
+                    if build.score(*a) >= cap && !choice.selected.iter().any(|v| v == a.id()) {
+                        it.warning = Some(format!("Already at {cap}"));
+                    }
+                    it
+                })
+                .collect()
+        }
         Options::Feats { categories } => feat_options(categories, build, ch, comp),
         Options::Spells(filter) => spell_options(filter, choice, build, ch, comp),
         Options::OptionalFeatures { types } => {

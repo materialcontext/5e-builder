@@ -5,7 +5,7 @@ A D&D 5e character builder, manager and printable character sheet, written in Ru
 - **Creation wizard** following the 2024 Player's Handbook. Older (legacy) species, backgrounds, classes and subclasses can be used too and are adapted to the 2024 rules (legacy backgrounds get ability score increases and an origin feat; legacy species ability bonuses are optional).
 - **Every choice is tracked**: skills, tools, languages, ability score increases, feats and their sub-choices, fighting styles, invocations, weapon masteries, expertise, subclasses, spells, starting equipment. The wizard shows what is still missing on each step.
 - **Levels 1–20 and multiclassing**, with average or rolled hit points.
-- **Printable sheet**: main page, features, spellcasting (with slot boxes) and spell text, equipment and story. Use the browser's *Print → Save as PDF*.
+- **Printable sheet**: a faithful replica of the official two-page 2024 character sheet layout, filled in, plus optional pages with full feature and spell text and a continuation page for anything that doesn't fit. Letter or A4; use the browser's *Print → Save as PDF*.
 - **Character manager**: characters live in the browser (localStorage); duplicate, delete, and import/export JSON.
 - **All content** from the 5etools data, with per-source toggles.
 - **Streamlined**: "choose the rest for me" per step and "pick for me" per choice (skills that use your best abilities, bonuses into your class's primary ability), auto-assign scores for your class, 4d6 rolling, undo/redo (Ctrl+Z), "next unfinished", spell-level and feat-category filters, and "new this level" highlights when levelling up.
@@ -20,7 +20,7 @@ AA, print CSS practice, and 2024 character-sheet conventions). Checks:
 - `python3 -I tools/contrast.py` — every colour token pair meets WCAG AA in
   light and dark themes.
 - axe-core scans of every screen (light, dark, phone) report no violations.
-- Fonts (Inter, Alegreya) are self-hosted under the SIL Open Font License
+- Fonts (Inter, Alegreya, Alegreya Sans) are self-hosted under the SIL Open Font License
   (`crates/web/fonts`).
 
 Content coverage is documented in [`docs/content-audit.md`](docs/content-audit.md).
@@ -80,6 +80,10 @@ The output in `crates/web/dist` is a static site and can be hosted anywhere.
 ```sh
 cargo test --workspace --exclude web
 ```
+
+`cargo run -p rules --example sample_characters -- crates/web/public/compendium.json`
+prints a few fully built characters (multiclass caster, level 20 fighter and
+wizard) in the app's storage format, for checking the printed sheet.
 
 The rules tests run against the generated `compendium.json` when present.
 An audit test checks that every feat/spell/item reference resolves and every

@@ -691,3 +691,64 @@ fn per_record_audit_regressions() {
     let s = sheet(&r, &b, comp);
     assert_eq!((s.speed.walk, s.speed.climb, s.speed.swim), (40, 40, 40));
 }
+
+#[test]
+fn ability_increases_respect_their_own_cap() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+    for _ in 1..20 {
+        ch.level_up(Key("fighter|xphb".into()));
+    }
+    // Put every ability increase into Dexterity, including the Epic Boon's.
+    for _ in 0..30 {
+        let b = build(&ch, comp);
+        let Some(c) = b.pending().next().cloned() else {
+            break;
+        };
+        if let Options::Abilities { from, .. } = &c.options {
+            if from.contains(&Ability::Dex) && c.count == 1 {
+                ch.set_choice(&c.path, vec!["dex".into()]);
+                continue;
+            }
+        }
+        if c.path.ends_with("/p1/pick") || c.path.contains("epic") {
+            let boon = options(&c, &b, &ch, comp)
+                .into_iter()
+                .find(|o| o.value == "boon of combat prowess|xphb");
+            if let Some(o) = boon {
+                ch.set_choice(&c.path, vec![o.value]);
+                continue;
+            }
+        }
+        let mut one = ch.clone();
+        autofill(&mut one, comp);
+        let v = one.choices.get(&c.path).cloned().unwrap_or_default();
+        ch.set_choice(&c.path, v);
+    }
+    let b = build(&ch, comp);
+    assert!(b.has_feat_named("Boon of Combat Prowess"), "{:?}", b.feats);
+    // Ordinary increases stop at 20; only the boon's +1 may go beyond.
+    assert!(b.score(Ability::Dex) <= 21, "dex {}", b.score(Ability::Dex));
+    assert!(b.score(Ability::Dex) >= 20, "dex {}", b.score(Ability::Dex));
+}
+
+#[test]
+fn class_features_name_the_level_they_were_gained() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+    for _ in 1..10 {
+        ch.level_up(Key("fighter|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let origin = |name: &str| b.features.iter().find(|f| f.feature.name == name).map(|f| f.origin.clone());
+    assert_eq!(origin("Second Wind").as_deref(), Some("Fighter 1"));
+    assert_eq!(origin("Action Surge").as_deref(), Some("Fighter 2"));
+    assert_eq!(origin("Extra Attack").as_deref(), Some("Fighter 5"));
+    // Leveled picks name the level each became available (masteries: 3 at 1, then 4, 10).
+    let masteries: Vec<String> = b.features.iter().filter(|f| f.feature.name.starts_with("Weapon Mastery: ")).map(|f| f.origin.clone()).collect();
+    assert_eq!(masteries, ["Fighter 1", "Fighter 1", "Fighter 1", "Fighter 4", "Fighter 10"]);
+    // Subclass features keep the subclass name.
+    let sub = b.features.iter().find(|f| f.origin.contains('(')).expect("subclass feature");
+    assert!(sub.origin.starts_with("Fighter 3 ("), "{}", sub.origin);
+}

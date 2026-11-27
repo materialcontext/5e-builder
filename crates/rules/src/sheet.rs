@@ -76,10 +76,21 @@ pub struct InventoryLine {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ClassSummary {
+    pub name: String,
+    pub level: u8,
+    pub subclass: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Sheet {
     pub name: String,
     pub summary: String,
     pub class_line: String,
+    /// Each class with its level and subclass, in the order taken.
+    pub classes: Vec<ClassSummary>,
+    /// A shield is equipped (its bonus is already in `armor_class`).
+    pub shield: bool,
     pub species: String,
     pub background: String,
     pub level: u8,
@@ -416,7 +427,7 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
             InventoryLine { name: i.name.clone(), qty: i.qty, weight: it.map(|x| x.weight).unwrap_or(0.0) * i.qty as f32, equipped: i.equipped, attuned: i.attuned, notes }
         })
         .collect();
-    let carried_weight = inventory.iter().map(|i| i.weight).sum();
+    let carried_weight = inventory.iter().map(|i| i.weight).fold(0.0, |a, b| a + b);
 
     let mut features = build.features.clone();
     features.sort_by_key(|f| match f.kind {
@@ -427,6 +438,15 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         FeatureKind::Other => 4,
     });
 
+    let classes: Vec<ClassSummary> = build
+        .classes
+        .iter()
+        .filter_map(|c| {
+            let class = comp.classes.get(&c.key)?;
+            let sub = c.subclass.as_ref().and_then(|k| comp.subclasses.get(k)).map(|s| s.name.clone());
+            Some(ClassSummary { name: class.name.clone(), level: c.level, subclass: sub })
+        })
+        .collect();
     let class_line = build
         .classes
         .iter()
@@ -455,6 +475,8 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         name: if ch.name.is_empty() { "Unnamed hero".into() } else { ch.name.clone() },
         summary: [species_name.as_str(), class_line.as_str()].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(" · "),
         class_line,
+        classes,
+        shield: shield.is_some(),
         species: species_name,
         background,
         level,
