@@ -628,13 +628,15 @@ fn LevelsPanel() -> impl IntoView {
             .collect_view();
         view! { <ol class="levels">{rows}</ol> }
     };
-    let options = ctx.ch.with_untracked(|ch| {
-        comp.classes
-            .iter()
-            .filter(|c| ch.settings.source_enabled(&c.source))
-            .filter(|c| comp.replacement_class(&c.key).is_none() || ch.levels.iter().any(|l| l.class == c.key))
-            .map(|c| (c.key.0.clone(), format!("{} ({})", c.name, c.source)))
-            .collect::<Vec<_>>()
+    // Current classes first; reprinted older versions in their own group at the end.
+    let (older_options, options): (Vec<(String, String, bool)>, Vec<(String, String, bool)>) = ctx.ch.with_untracked(|ch| {
+        rules::browse::classes(ch, &comp)
+            .into_iter()
+            .map(|o| {
+                let src = comp.classes.get(&Key(o.value.clone())).map(|c| c.source.clone()).unwrap_or_default();
+                (o.value.clone(), format!("{} ({src})", o.label), o.older.is_some())
+            })
+            .partition(|x| x.2)
     });
     view! {
         <div class="levels-panel">
@@ -653,7 +655,12 @@ fn LevelsPanel() -> impl IntoView {
                 <div class="row">
                     <select aria-label="Class for the next level" on:change=move |ev| add_class.set(event_target_value(&ev))>
                         <option value="">"Add a level in…"</option>
-                        {options.into_iter().map(|(k, n)| view! { <option value=k>{n}</option> }).collect_view()}
+                        {options.into_iter().map(|(k, n, _)| view! { <option value=k>{n}</option> }).collect_view()}
+                        {(!older_options.is_empty()).then(|| view! {
+                            <optgroup label="Older versions (replaced in 2024)">
+                                {older_options.into_iter().map(|(k, n, _)| view! { <option value=k>{n}</option> }).collect_view()}
+                            </optgroup>
+                        })}
                     </select>
                     <button class="button" disabled=move || add_class.get().is_empty() || ctx.ch.with(|c| c.total_level() >= 20)
                         on:click=move |_| { let k = add_class.get(); if !k.is_empty() { ctx.edit(|c| c.level_up(Key(k))) } }>"Level up"</button>
@@ -1047,6 +1054,7 @@ fn EquipmentStep() -> impl IntoView {
                 body: rules::explain::item(&c1, i),
                 group: None,
                 facets: vec![],
+                older: None,
             })
             .collect::<Vec<_>>()
     });

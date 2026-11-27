@@ -15,6 +15,10 @@ fn score_option(o: &OptionItem, c: &ChoiceState, b: &Build, primary: &[Ability],
     if o.warning.is_some() {
         s -= 100;
     }
+    // Reprinted older versions only when nothing else fits.
+    if o.older.is_some() {
+        s -= 200;
+    }
     match &c.options {
         Options::Abilities { .. } => {
             if let Some(a) = Ability::parse(&o.value) {

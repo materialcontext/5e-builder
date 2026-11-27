@@ -119,6 +119,32 @@ impl Compendium {
         self.source(id).map(|s| s.name.clone()).unwrap_or_else(|| id.to_string())
     }
 
+    /// The campaign setting a book belongs to, for setting-specific content
+    /// such as languages. None for setting-neutral books and for the
+    /// Forgotten Realms (the default setting of the core rules).
+    pub fn campaign_setting(source: &str) -> Option<&'static str> {
+        Some(match source.to_uppercase().as_str() {
+            "ERLW" | "EFA" | "EGW:EBERRON" | "RMBRE" | "WGTE" => "Eberron",
+            "EGW" | "TDCSR" | "CRCOTN" | "LOX" => "Exandria",
+            "GGR" | "RMR" => "Ravnica",
+            "MOT" => "Theros",
+            "DSOTDQ" | "DLTTOS" => "Dragonlance",
+            "SCC" => "Strixhaven",
+            "VRGR" | "COS" => "Ravenloft",
+            "AAG" | "BAM" | "LLK" | "SJA" => "Spelljammer",
+            "SATO" | "SATOM" | "PS" => "Planescape",
+            "PSA" => "Amonkhet",
+            "PSI" => "Innistrad",
+            "PSK" => "Kaladesh",
+            "PSX" => "Ixalan",
+            "PSD" => "Dominaria",
+            "PSZ" => "Zendikar",
+            "WOW" => "World of Warcraft",
+            "AWM" | "UTHFTLH" => "Other settings",
+            _ => return None,
+        })
+    }
+
     /// A glossary entry by kind and name, preferring the 2024 version.
     pub fn rule(&self, kind: &str, name: &str) -> Option<&Rule> {
         let mut found: Vec<&Rule> = self.rules.iter().filter(|r| r.kind == kind && r.name.eq_ignore_ascii_case(name)).collect();

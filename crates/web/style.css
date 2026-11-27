@@ -450,6 +450,12 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .inv-item[open] { max-width: 60ch; }
 .method-help { max-width: 75ch; margin: var(--s2) 0; }
 
+.opt-group { font: 700 .75rem var(--font-ui); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: var(--s3) 0 var(--s1); }
+.opt-group:first-child { margin-top: 0; }
+.older-fold { border: 1px dashed var(--line-strong); border-radius: var(--r-sm); margin-top: var(--s2); }
+.older-fold > summary { cursor: pointer; padding: var(--s2) var(--s3); font-weight: 600; min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
+.older-list { display: grid; gap: var(--s2); padding: 0 var(--s2) var(--s2); }
+
 .score-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s2); margin: 0 0 var(--s4); }
 .score-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
 .score-cell b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }

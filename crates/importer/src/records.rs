@@ -191,6 +191,7 @@ pub fn species(data: &Value) -> Vec<Species> {
         }
 
         out.push(Species {
+            reprinted: reprint(race),
             key,
             legacy: legacy(race),
             sizes: race
@@ -243,6 +244,7 @@ pub fn backgrounds(data: &Value) -> Vec<Background> {
                 })
                 .collect();
             Background {
+                reprinted: reprint(o),
                 key: Key::new(s(o, "name"), s(o, "source")),
                 name: s(o, "name").to_string(),
                 source: s(o, "source").to_string(),
@@ -268,6 +270,7 @@ fn feat_record(o: &Obj, version_of: Option<Key>) -> Feat {
         grants.push(Grant::HpPerLevel(2));
     }
     Feat {
+        reprinted: reprint(o),
         key: Key::new(&name, s(o, "source")),
         source: s(o, "source").to_string(),
         category: o.get("category").and_then(Value::as_str).map(String::from),
@@ -389,6 +392,7 @@ pub fn optional_features(data: &Value) -> Vec<OptionalFeature> {
             grants.extend(ability_grants(o, "opt.asi"));
             grants.extend(g::flat_progressions(o, "opt"));
             OptionalFeature {
+                reprinted: reprint(o),
                 key: Key::new(s(o, "name"), s(o, "source")),
                 name: s(o, "name").to_string(),
                 source: s(o, "source").to_string(),
@@ -570,6 +574,17 @@ fn split_subfeature_refs(v: &Value) -> (Value, Vec<String>) {
         other => other.clone(),
     };
     (cleaned, refs)
+}
+
+/// The newer version of a reprinted record, as `name|source`, from 5etools'
+/// `reprintedAs` (`Name|SRC`, or `Short|Class|ClassSrc|SRC` for subclasses).
+pub fn reprint(o: &Obj) -> Option<String> {
+    let first = o.get("reprintedAs")?.as_array()?.first()?;
+    let uid = first.as_str().or_else(|| first.get("uid").and_then(Value::as_str))?;
+    let parts: Vec<&str> = uid.split('|').collect();
+    let name = parts.first()?;
+    let source = if parts.len() > 1 { parts[parts.len() - 1] } else { "" };
+    Some(format!("{}|{}", strip(name), source))
 }
 
 struct FeatureCtx<'a> {
@@ -795,6 +810,7 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             }
         }
         out_classes.push(Class {
+            reprinted: reprint(c),
             legacy: legacy(c),
             hit_die: c.get("hd").and_then(|h| h.get("faces")).and_then(Value::as_u64).unwrap_or(8) as u8,
             saves: c
@@ -840,6 +856,11 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
         });
     }
 
+    let sub_reprints: HashMap<(String, String), String> = subclasses
+        .iter()
+        .filter_map(Value::as_object)
+        .filter_map(|sc| Some(((s(sc, "name").to_string(), s(sc, "source").to_string()), reprint(sc)?)))
+        .collect();
     let mut out_subs = Vec::new();
     for sc in subclasses.iter().filter_map(Value::as_object) {
         if s(sc, "className").is_empty() {
@@ -887,6 +908,8 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             x => x.to_string(),
         };
         out_subs.push(Subclass {
+            // Copies onto another class version don't carry the mark; use the original's.
+            reprinted: reprint(sc).or_else(|| sub_reprints.get(&(s(sc, "name").to_string(), s(sc, "source").to_string())).cloned()),
             key: Key(format!("{}|{}|{}", short.to_lowercase(), s(sc, "source").to_lowercase(), class_key)),
             short_name: short,
             source: s(sc, "source").to_string(),

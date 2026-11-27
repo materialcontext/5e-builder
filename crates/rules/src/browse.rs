@@ -3,7 +3,7 @@
 //! its own text) so the player can read everything before choosing.
 
 use crate::explain;
-use crate::options::{facet_walk, OptionItem};
+use crate::options::{facet_walk, reprint_note, OptionItem};
 use crate::Character;
 use compendium::*;
 use std::collections::BTreeSet;
@@ -41,7 +41,7 @@ impl Tags {
 }
 
 fn item(value: &Key, label: &str, detail: String, body: Vec<Entry>, facets: Vec<(String, String)>) -> OptionItem {
-    OptionItem { value: value.0.clone(), label: label.to_string(), detail, disabled: None, warning: None, body, group: None, facets }
+    OptionItem { value: value.0.clone(), label: label.to_string(), detail, disabled: None, warning: None, body, group: None, facets, older: None }
 }
 
 /// One line per thing a list of grants gives ("Skills: Insight, Religion").
@@ -225,7 +225,9 @@ pub fn backgrounds(ch: &Character, comp: &Compendium) -> Vec<OptionItem> {
             if let Some(pr) = &b.prereq {
                 body.insert(0, p(format!("Prerequisite: {pr}")));
             }
-            item(&b.key, &b.name, format!("{detail} · {}", comp.source_name(&b.source)), body, t.done())
+            let mut o = item(&b.key, &b.name, format!("{detail} · {}", comp.source_name(&b.source)), body, t.done());
+            o.older = reprint_note(&b.reprinted, ch, comp, |n, s| comp.backgrounds.get(&Key::new(n, s)).is_some());
+            o
         })
         .collect();
     out.sort_by(|a, b| (a.facets.iter().any(|f| f.1 == "Older (2014)"), &a.label).cmp(&(b.facets.iter().any(|f| f.1 == "Older (2014)"), &b.label)));
@@ -295,7 +297,9 @@ pub fn species(ch: &Character, comp: &Compendium) -> Vec<OptionItem> {
                 lb.extend(l.features.iter().map(|f| section(&f.name, f.body.clone())));
                 body.push(section(&format!("Lineage: {}", l.name), lb));
             }
-            item(&s.key, &s.name, format!("{} · {}", facts.join(" · "), comp.source_name(&s.source)), body, t.done())
+            let mut o = item(&s.key, &s.name, format!("{} · {}", facts.join(" · "), comp.source_name(&s.source)), body, t.done());
+            o.older = reprint_note(&s.reprinted, ch, comp, |n, src| comp.species.get(&Key::new(n, src)).is_some());
+            o
         })
         .collect();
     out.sort_by(|a, b| (a.facets.iter().any(|f| f.1 == "Older (2014)"), &a.label).cmp(&(b.facets.iter().any(|f| f.1 == "Older (2014)"), &b.label)));
@@ -307,7 +311,6 @@ pub fn classes(ch: &Character, comp: &Compendium) -> Vec<OptionItem> {
         .classes
         .iter()
         .filter(|c| ch.settings.source_enabled(&c.source))
-        .filter(|c| comp.replacement_class(&c.key).is_none() || ch.levels.iter().any(|l| l.class == c.key))
         .map(|c| {
             let mut t = Tags::new();
             for a in &c.primary {
@@ -373,7 +376,9 @@ pub fn classes(ch: &Character, comp: &Compendium) -> Vec<OptionItem> {
             for f in &c.features {
                 body.push(section(&format!("Level {} — {}", f.level, f.name), f.body.clone()));
             }
-            item(&c.key, &c.name, format!("{detail} · {}", comp.source_name(&c.source)), body, t.done())
+            let mut o = item(&c.key, &c.name, format!("{detail} · {}", comp.source_name(&c.source)), body, t.done());
+            o.older = reprint_note(&c.reprinted, ch, comp, |n, s| comp.classes.get(&Key::new(n, s)).is_some());
+            o
         })
         .collect();
     out.sort_by(|a, b| (a.facets.iter().any(|f| f.1 == "Older (2014)"), &a.label).cmp(&(b.facets.iter().any(|f| f.1 == "Older (2014)"), &b.label)));

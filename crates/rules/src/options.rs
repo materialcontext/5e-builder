@@ -20,6 +20,9 @@ pub struct OptionItem {
     pub body: Vec<Entry>,
     /// Filter group for long lists (spell level, feat category, ...).
     pub group: Option<String>,
+    /// Set for an older version that was reprinted (and the reprint is
+    /// available): shown folded away under "older versions".
+    pub older: Option<String>,
     /// Filter tags as (facet, value), e.g. ("Ability increase", "Strength").
     /// The picker builds its filter menu from whatever facets a list has.
     pub facets: Vec<(String, String)>,
@@ -27,7 +30,7 @@ pub struct OptionItem {
 
 impl OptionItem {
     fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
-        OptionItem { value: value.into(), label: label.into(), detail: String::new(), disabled: None, warning: None, body: vec![], group: None, facets: vec![] }
+        OptionItem { value: value.into(), label: label.into(), detail: String::new(), disabled: None, warning: None, body: vec![], group: None, facets: vec![], older: None }
     }
     fn detail(mut self, d: impl Into<String>) -> Self {
         self.detail = d.into();
@@ -131,28 +134,61 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
             tool_names(comp, &enabled, &["instrumentMusical"]).into_iter().map(|t| prof_item(Prof::Tool(t.clone()), title_case(&t))).collect()
         }
         Options::AnyGamingSet => tool_names(comp, &enabled, &["setGaming"]).into_iter().map(|t| prof_item(Prof::Tool(t.clone()), title_case(&t))).collect(),
-        Options::Languages(list) => list.iter().map(|l| prof_item(Prof::Language(l.clone()), l.clone())).collect(),
+        Options::Languages(list) => list
+            .iter()
+            .map(|l| {
+                let mut o = prof_item(Prof::Language(l.clone()), l.clone());
+                if let Some(lang) = comp.language(l) {
+                    o.detail = language_kind_label(&lang.kind).into();
+                }
+                o.group = Some("Listed options".into());
+                o
+            })
+            .collect(),
         Options::AnyLanguage | Options::AnyStandardLanguage | Options::AnyExoticLanguage => {
+            // "Any language" is the full list: standard (common) languages,
+            // then rare, exotic and setting-specific (uncommon) ones.
             let kinds: &[&str] = match &choice.options {
                 Options::AnyStandardLanguage => &["standard"],
                 Options::AnyExoticLanguage => &["exotic", "rare"],
-                _ => &["standard", "exotic", "rare"],
+                _ => &["standard", "exotic", "rare", "other"],
             };
             // A language's kind comes from its most authoritative source (2024 first).
             let langs: Vec<&Language> = comp.languages.iter().filter(|l| enabled(&l.source)).collect();
-            let mut names: BTreeMap<String, String> = BTreeMap::new();
+            let mut names: BTreeMap<String, (String, String)> = BTreeMap::new();
             for l in dedupe(langs.into_iter()).into_iter().filter(|l| kinds.contains(&l.kind.as_str())) {
-                names.insert(l.name.to_lowercase(), l.kind.clone());
+                names.insert(l.name.to_lowercase(), (l.kind.clone(), l.source.clone()));
             }
             if names.is_empty() {
                 for n in ["Common", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc"] {
-                    names.insert(n.to_lowercase(), "standard".into());
+                    names.insert(n.to_lowercase(), ("standard".into(), "XPHB".into()));
                 }
             }
-            names
+            // Common (standard) languages, then uncommon ones, then languages
+            // of specific campaign settings (other than the Forgotten Realms),
+            // each setting in its own group.
+            let mut items: Vec<(u8, OptionItem)> = names
                 .into_iter()
-                .map(|(n, kind)| prof_item(Prof::Language(title_case(&n)), title_case(&n)).detail(title_case(&kind)))
-                .collect()
+                .map(|(n, (kind, source))| {
+                    let setting = Compendium::campaign_setting(&source);
+                    let mut o = prof_item(Prof::Language(title_case(&n)), title_case(&n)).detail(match setting {
+                        Some(s) => format!("{} · {s}", language_kind_label(&kind)),
+                        None => language_kind_label(&kind).to_string(),
+                    });
+                    let (rank, group) = match (setting, kind.as_str()) {
+                        (Some(s), _) => (3, format!("{s} languages")),
+                        (None, "standard") => (1, "Standard languages (common)".to_string()),
+                        (None, _) => (2, "Uncommon languages".to_string()),
+                    };
+                    o.group = Some(group);
+                    if matches!(n.as_str(), "druidic" | "thieves' cant") {
+                        o.warning = Some("Normally learned only through a class".into());
+                    }
+                    (rank, o)
+                })
+                .collect();
+            items.sort_by(|a, b| (a.0, &a.1.group, &a.1.label).cmp(&(b.0, &b.1.group, &b.1.label)));
+            items.into_iter().map(|(_, o)| o).collect()
         }
         Options::Weapons(list) => list.iter().map(|w| prof_item(Prof::Weapon(w.clone()), title_case(w))).collect(),
         Options::Abilities { from, max, .. } => {
@@ -173,12 +209,17 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
             let taken: BTreeSet<&Key> = build.optional_features.iter().map(|(k, _)| k).collect();
             let items: Vec<&OptionalFeature> =
                 comp.optional_features.iter().filter(|o| o.types.iter().any(|t| types.contains(t)) && enabled(&o.source)).collect();
-            dedupe(items.into_iter())
+            // Reprinted older versions are kept, but folded away.
+            let note = |o: &OptionalFeature| reprint_note(&o.reprinted, ch, comp, |n, s| comp.optional_features.get(&Key::new(n, s)).is_some());
+            let (old_items, current): (Vec<&OptionalFeature>, Vec<&OptionalFeature>) = items.into_iter().partition(|o| note(o).is_some());
+            dedupe(current.into_iter())
                 .into_iter()
+                .chain(old_items)
                 .map(|o| {
                     let mut it = OptionItem::new(o.key.0.clone(), o.name.clone())
                         .detail(o.prereq.as_ref().map(|p| p.text.clone()).unwrap_or_else(|| comp.source_name(&o.source)))
                         .body(o.body.clone());
+                    it.older = note(o);
                     if taken.contains(&o.key) && !own.contains(o.key.0.as_str()) {
                         it.disabled = Some("Already chosen".into());
                     } else if let Some(p) = &o.prereq {
@@ -192,10 +233,16 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
             .subclasses_of(class)
             .filter(|s| enabled(&s.source))
             .map(|s| {
+                // The reprint must be a subclass of this same class version.
+                let older = reprint_note(&s.reprinted, ch, comp, |n, src| {
+                    comp.subclasses.iter().any(|x| x.class == s.class && x.short_name.eq_ignore_ascii_case(n) && x.source.eq_ignore_ascii_case(src))
+                });
                 let summary: Vec<&str> = s.features.iter().map(|f| f.name.as_str()).take(4).collect();
-                OptionItem::new(s.key.0.clone(), s.name.clone())
+                let mut o = OptionItem::new(s.key.0.clone(), s.name.clone())
                     .detail(format!("{} · {}", summary.join(", "), comp.source_name(&s.source)))
-                    .body(crate::explain::subclass(comp, s))
+                    .body(crate::explain::subclass(comp, s));
+                o.older = older;
+                o
             })
             .collect(),
         Options::Lineage { species } => comp
@@ -261,13 +308,18 @@ pub fn options(choice: &ChoiceState, build: &Build, ch: &Character, comp: &Compe
                 o
             })
             .collect(),
-        Options::Mixed(parts) => parts
-            .iter()
-            .flat_map(|p| {
-                let sub = ChoiceState { options: p.clone(), ..choice.clone() };
-                options(&sub, build, ch, comp)
-            })
-            .collect(),
+        Options::Mixed(parts) => {
+            // Each option once, the first time it appears ("listed" before "any").
+            let mut seen = BTreeSet::new();
+            parts
+                .iter()
+                .flat_map(|p| {
+                    let sub = ChoiceState { options: p.clone(), ..choice.clone() };
+                    options(&sub, build, ch, comp)
+                })
+                .filter(|o| seen.insert(o.value.to_lowercase()))
+                .collect()
+        }
     };
     // Keep the current selections visible even if their source was disabled.
     for v in &choice.selected {
@@ -385,17 +437,40 @@ pub fn has_spellcasting_feature(build: &Build, comp: &Compendium) -> bool {
     })
 }
 
+fn language_kind_label(kind: &str) -> &'static str {
+    match kind {
+        "standard" => "Standard language",
+        "rare" => "Rare language",
+        "exotic" => "Exotic language",
+        "secret" => "Secret language",
+        _ => "Setting language",
+    }
+}
+
+/// "Reprinted in <book> as <name>" when `reprinted` (`name|source`) names a
+/// record that `exists` and whose book is enabled; None otherwise, so an older
+/// version stays in the main list when its reprint isn't available.
+pub fn reprint_note(reprinted: &Option<String>, ch: &Character, comp: &Compendium, exists: impl Fn(&str, &str) -> bool) -> Option<String> {
+    let (name, source) = reprinted.as_ref()?.split_once('|')?;
+    (exists(name, source) && ch.settings.source_enabled(source)).then(|| format!("Replaced by {name} ({})", comp.source_name(source)))
+}
+
 fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Compendium) -> Vec<OptionItem> {
     let taken: BTreeSet<&Key> = build.feats.iter().map(|(k, _)| k).collect();
     // Older (uncategorised) feats that were reprinted in 2024 give way to the
-    // reprint, whatever category the reprint landed in.
-    let reprinted: BTreeSet<String> =
+    // reprint, whatever category the reprint landed in: they are offered only
+    // in the folded "older versions" section.
+    let newer: BTreeSet<String> =
         comp.feats.iter().filter(|f| f.category.is_some() && ch.settings.source_enabled(&f.source)).map(|f| f.name.to_lowercase()).collect();
+    let older_note = |f: &Feat| {
+        reprint_note(&f.reprinted, ch, comp, |n, s| comp.feats.get(&Key::new(n, s)).is_some()).or_else(|| {
+            (f.category.is_none() && newer.contains(&f.name.to_lowercase())).then(|| format!("Replaced by {} (2024)", f.name))
+        })
+    };
     let feats: Vec<&Feat> = comp
         .feats
         .iter()
         .filter(|f| f.version_of.is_none() && ch.settings.source_enabled(&f.source))
-        .filter(|f| f.category.is_some() || !reprinted.contains(&f.name.to_lowercase()))
         .filter(|f| {
             categories.is_empty()
                 || categories.iter().any(|c| match &f.category {
@@ -404,8 +479,10 @@ fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Com
                 })
         })
         .collect();
-    let mut out: Vec<OptionItem> = dedupe(feats.into_iter())
+    let (old_feats, current): (Vec<&Feat>, Vec<&Feat>) = feats.into_iter().partition(|f| older_note(f).is_some());
+    let mut out: Vec<OptionItem> = dedupe(current.into_iter())
         .into_iter()
+        .chain(old_feats)
         .map(|f| {
             // Category, ability increases and grants are shown as tags; the
             // detail line carries the prerequisite and the book.
@@ -415,6 +492,7 @@ fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Com
             };
             let mut o = OptionItem::new(f.key.0.clone(), f.name.clone()).detail(detail).body(f.body.clone());
             o.group = Some(f.category_label().to_string());
+            o.older = older_note(f);
             o.facets = feat_facets(f, comp);
             if taken.contains(&f.key) && !f.repeatable {
                 o.disabled = Some("Already taken".into());

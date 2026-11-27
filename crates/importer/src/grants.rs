@@ -92,10 +92,18 @@ pub fn languages(o: &Obj, id: &str) -> Vec<Grant> {
             "any" => out.push(choose(&cid, "Language", count_of(v), Options::AnyLanguage)),
             "anyExotic" => out.push(choose(&cid, "Language", count_of(v), Options::AnyExoticLanguage)),
             "choose" => {
-                let from = str_list(v.get("from")).iter().map(|s| title_case(&name_part(s))).collect();
-                out.push(choose(&cid, "Language", count_of(v), Options::Languages(from)));
+                let raw = str_list(v.get("from"));
+                let listed: Vec<String> = raw.iter().filter(|s| s.as_str() != "other").map(|s| title_case(&name_part(s))).collect();
+                // "…or other": the listed languages, plus any other language.
+                let opts = if raw.iter().any(|s| s == "other") {
+                    Options::Mixed(vec![Options::Languages(listed), Options::AnyLanguage])
+                } else {
+                    Options::Languages(listed)
+                };
+                out.push(choose(&cid, "Language", count_of(v), opts));
             }
-            "other" => {}
+            // "One other language of your choice."
+            "other" => out.push(choose(&cid, "Language", count_of(v), Options::AnyLanguage)),
             _ => out.push(Grant::Prof(Prof::Language(title_case(&name_part(k))))),
         }
     }

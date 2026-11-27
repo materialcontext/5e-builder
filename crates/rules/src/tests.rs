@@ -782,10 +782,12 @@ fn older_feats_only_where_not_reprinted() {
     let b = build(&ch, comp);
     let asi = b.choices.iter().find(|c| c.path.ends_with(".asi") && matches!(c.options, Options::Feats { .. })).expect("level 4 feat choice");
     let opts = options(asi, &b, &ch, comp);
-    let has = |k: &str| opts.iter().any(|o| o.value == k);
-    assert!(has("mobile|phb"), "2014 Mobile has no 2024 version");
-    assert!(has("sharpshooter|xphb") && !has("sharpshooter|phb"), "2024 reprint replaces the 2014 feat");
-    assert!(!has("alert|phb"), "2014 Alert gives way to the 2024 Origin feat");
+    let current = |k: &str| opts.iter().any(|o| o.value == k && o.older.is_none());
+    let folded = |k: &str| opts.iter().any(|o| o.value == k && o.older.is_some());
+    assert!(current("dungeon delver|phb"), "2014 Dungeon Delver has no 2024 version");
+    assert!(folded("mobile|phb"), "2014 Mobile was reprinted as Speedy");
+    assert!(current("sharpshooter|xphb") && folded("sharpshooter|phb"), "2024 reprint replaces the 2014 feat; the old one is folded");
+    assert!(folded("alert|phb"), "2014 Alert gives way to the 2024 Origin feat");
 }
 
 #[test]
@@ -887,4 +889,51 @@ fn every_option_can_be_expanded() {
         }
     }
     assert!(empty.is_empty(), "options without a description: {:?}", &empty[..empty.len().min(20)]);
+}
+
+#[test]
+fn reprinted_subclasses_and_options_are_folded() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("bard|xphb", "sage|xphb", "human|xphb");
+    for _ in 1..3 {
+        ch.level_up(Key("bard|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let c = b.choices.iter().find(|c| matches!(c.options, Options::Subclass { .. })).unwrap();
+    let opts = options(c, &b, &ch, comp);
+    let get = |k: &str| opts.iter().find(|o| o.value == k).unwrap_or_else(|| panic!("{k} missing"));
+    assert!(get("lore|xphb|bard|xphb").older.is_none());
+    assert!(get("lore|phb|bard|xphb").older.is_some(), "2014 Lore is replaced by the 2024 Lore");
+    assert!(get("swords|xge|bard|xphb").older.is_none(), "Swords has no reprint");
+    // Older classes are folded, not hidden.
+    let classes = crate::browse::classes(&ch, comp);
+    assert!(classes.iter().any(|o| o.value == "bard|phb" && o.older.is_some()));
+}
+
+#[test]
+fn other_language_means_the_full_list() {
+    let Some(comp) = comp() else { return };
+    let ch = hero("wizard|xphb", "izzet engineer|ggr", "human|xphb");
+    let b = build(&ch, comp);
+    let c = b
+        .choices
+        .iter()
+        .find(|c| c.path.starts_with("background") && matches!(&c.options, Options::Mixed(p) if p.iter().any(|x| matches!(x, Options::Languages(_)))))
+        .expect("Izzet Engineer language choice");
+    let opts = options(c, &b, &ch, comp);
+    let labels: Vec<&str> = opts.iter().map(|o| o.label.as_str()).collect();
+    assert!(!labels.contains(&"Other"), "'other' must not be a language: {labels:?}");
+    assert_eq!(opts[0].group.as_deref(), Some("Listed options"));
+    assert!(opts.iter().any(|o| o.label == "Elvish" && o.group.as_deref() == Some("Standard languages (common)")));
+    assert!(opts.iter().any(|o| o.label == "Celestial" && o.group.as_deref() == Some("Uncommon languages")));
+    // Setting languages (not Forgotten Realms) are grouped by setting, after the rest.
+    assert!(opts.iter().any(|o| o.label == "Quori" && o.group.as_deref() == Some("Eberron languages")), "{:?}", opts.iter().map(|o| (&o.label, &o.group)).collect::<Vec<_>>());
+    let first_setting = opts.iter().position(|o| o.group.as_deref().is_some_and(|g| g.ends_with(" languages") && !g.starts_with("Standard") && !g.starts_with("Uncommon"))).unwrap();
+    assert!(opts[first_setting..].iter().all(|o| !matches!(o.group.as_deref(), Some("Standard languages (common)") | Some("Uncommon languages"))));
+    let mut values: Vec<&str> = opts.iter().map(|o| o.value.as_str()).collect();
+    values.sort();
+    let n = values.len();
+    values.dedup();
+    assert_eq!(n, values.len(), "each language once");
 }

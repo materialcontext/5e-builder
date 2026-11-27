@@ -43,6 +43,10 @@ pub struct SourceInfo {
 pub struct Species {
     pub key: Key,
     pub name: String,
+    /// Set when this (older) record was reprinted: `name|source` of the
+    /// newer version. Shown folded away under "older versions".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reprinted: Option<String>,
     pub source: String,
     /// Pre-2024 content (shown with a "legacy" badge).
     pub legacy: bool,
@@ -83,6 +87,10 @@ pub struct Lineage {
 pub struct Background {
     pub key: Key,
     pub name: String,
+    /// Set when this (older) record was reprinted: `name|source` of the
+    /// newer version. Shown folded away under "older versions".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reprinted: Option<String>,
     pub source: String,
     pub legacy: bool,
     /// Whether the background itself grants ability score increases (2024 style).
@@ -130,6 +138,10 @@ pub struct Prereq {
 pub struct Feat {
     pub key: Key,
     pub name: String,
+    /// Set when this (older) record was reprinted: `name|source` of the
+    /// newer version. Shown folded away under "older versions".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reprinted: Option<String>,
     pub source: String,
     pub category: Option<String>,
     pub prereq: Option<Prereq>,
@@ -218,6 +230,10 @@ pub struct Progression {
 pub struct Class {
     pub key: Key,
     pub name: String,
+    /// Set when this (older) record was reprinted: `name|source` of the
+    /// newer version. Shown folded away under "older versions".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reprinted: Option<String>,
     pub source: String,
     pub legacy: bool,
     pub hit_die: u8,
@@ -254,6 +270,10 @@ impl Class {
 pub struct Subclass {
     pub key: Key,
     pub name: String,
+    /// Set when this (older) record was reprinted: `name|source` of the
+    /// newer version. Shown folded away under "older versions".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reprinted: Option<String>,
     pub short_name: String,
     pub source: String,
     pub class: Key,
@@ -267,6 +287,10 @@ pub struct Subclass {
 pub struct OptionalFeature {
     pub key: Key,
     pub name: String,
+    /// Set when this (older) record was reprinted: `name|source` of the
+    /// newer version. Shown folded away under "older versions".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reprinted: Option<String>,
     pub source: String,
     pub types: Vec<String>,
     pub prereq: Option<Prereq>,

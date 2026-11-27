@@ -194,14 +194,49 @@ pub fn option_list(opts: Memo<Vec<OptionItem>>, selected: Vec<String>, count: us
         let selected = selected.clone();
         let sel = facet_sel.get();
         let avail = only_available.get();
-        opts.get()
+        let shown: Vec<OptionItem> = opts
+            .get()
             .into_iter()
             .filter(|o| g.is_none() || o.group == g)
             .filter(|o| passes(o, &sel))
             .filter(|o| !avail || o.disabled.is_none() || selected.contains(&o.value))
             .filter(|o| q.is_empty() || o.label.to_lowercase().contains(&q) || o.detail.to_lowercase().contains(&q))
-            .map(|o| option_row(o, &selected, count, on_set, inspect))
-            .collect_view()
+            .collect();
+        // Older versions that were reprinted sit in a fold at the end; it opens
+        // when one of them is the current selection.
+        let (older, current): (Vec<OptionItem>, Vec<OptionItem>) = shown.into_iter().partition(|o| o.older.is_some());
+        let n_older = older.len();
+        let open = older.iter().any(|o| selected.contains(&o.value));
+        let older_rows = older.into_iter().map(|o| option_row(o, &selected, count, on_set, inspect)).collect_view();
+        // Section headings when the list has groups (language kinds, spell levels).
+        let grouped = {
+            let mut g: Vec<&str> = current.iter().filter_map(|o| o.group.as_deref()).collect();
+            g.dedup();
+            g.len() > 1
+        };
+        let mut last: Option<String> = None;
+        let rows = current
+            .into_iter()
+            .map(|o| {
+                let head = (grouped && o.group != last).then(|| {
+                    last = o.group.clone();
+                    view! { <h3 class="opt-group">{o.group.clone().unwrap_or_default()}</h3> }
+                });
+                view! { {head}{option_row(o, &selected, count, on_set, inspect)} }
+            })
+            .collect_view();
+        view! {
+            {rows}
+            {(n_older > 0).then(|| view! {
+                <details class="older-fold" open=open>
+                    <summary>
+                        {format!("Older versions replaced in newer books ({n_older})")}
+                        <span class="muted small">" — the 2024 rules use the newer version; these are here for tables that allow them"</span>
+                    </summary>
+                    <div class="older-list">{older_rows}</div>
+                </details>
+            })}
+        }
     };
     view! {
         {chips}
@@ -387,6 +422,7 @@ fn option_row(o: OptionItem, selected: &[String], count: usize, on_set: Callback
             })}
         </span>
         <span class="option-detail">{o.detail.clone()}</span>
+        {o.older.clone().map(|n| view! { <span class="badge">{n}</span> })}
         {(!grants.is_empty() || !spells.is_empty() || !origin_feat.is_empty()).then(|| view! {
             <span class="tags">
                 {origin_feat.iter().map(|f| view! { <span class="tag cat">{format!("Feat: {f}")}</span> }).collect_view()}
