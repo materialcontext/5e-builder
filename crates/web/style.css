@@ -456,6 +456,19 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .older-fold > summary { cursor: pointer; padding: var(--s2) var(--s3); font-weight: 600; min-height: 44px; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); }
 .older-list { display: grid; gap: var(--s2); padding: 0 var(--s2) var(--s2); }
 
+.custom-intro p { margin: 0 0 var(--s2); }
+.custom-intro p:last-child { margin-bottom: 0; }
+.custom-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--s2) var(--s4); margin-bottom: var(--s3); }
+.custom-num { display: grid; grid-template-columns: 1fr 5.5em; gap: 2px var(--s2); align-items: center; }
+.custom-num .muted { grid-column: 1 / -1; }
+.custom-add { flex-wrap: wrap; gap: var(--s2); align-items: center; }
+.custom-add select, .custom-add input { min-height: 40px; }
+.custom-list { list-style: none; padding: 0; margin: 0 0 var(--s4); display: grid; gap: var(--s1); }
+.custom-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s1) var(--s3); background: var(--surface); }
+.custom-list li > details, .custom-list li > span { flex: 1; min-width: 0; }
+.custom-feature { display: grid; gap: var(--s2); max-width: 60ch; margin-bottom: var(--s4); }
+.custom-feature .button { justify-self: start; }
+
 .score-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s2); margin: 0 0 var(--s4); }
 .score-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--s2); border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
 .score-cell b { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
@@ -487,8 +500,9 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 @media screen and (max-width: 860px) {
-  /* Scale the whole page to the viewport on small screens. */
-  .sheet { --u: calc((100vw - 2 * var(--s3)) / 640); --page-w: calc(612 * var(--u)); --page-h: calc(792 * var(--u)); }
+  /* Scale the whole page to the viewport on small screens; its height follows the content. */
+  .sheet { --u: calc((100vw - 2 * var(--s3)) / 640); --page-w: calc(612 * var(--u)); --page-h: auto; }
+  .sheet .page { padding: calc(14 * var(--u)) 0; }
 }
 .rp { position: relative; width: calc(603 * var(--u)); height: calc(774 * var(--u)); }
 .rp-art-wrap, .rp-art-wrap > svg, .rp-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }

@@ -104,7 +104,7 @@ pub struct StepInfo {
     pub intro: &'static str,
 }
 
-pub const STEPS: [StepInfo; 10] = [
+pub const STEPS: [StepInfo; 11] = [
     StepInfo { step: Step::Basics, title: "Basics", slug: "basics", intro: "Name your character and pick the rules options and books you want to use." },
     StepInfo {
         step: Step::Class,
@@ -142,6 +142,12 @@ pub const STEPS: [StepInfo; 10] = [
         title: "Equipment",
         slug: "equipment",
         intro: "Pick your starting equipment, then add or remove anything you like. Equip armor and weapons so the sheet can use them.",
+    },
+    StepInfo {
+        step: Step::Custom,
+        title: "Custom",
+        slug: "custom",
+        intro: "Free control: add anything the rules as written don't allow — house rules, DM rewards, homebrew. Nothing here is checked.",
     },
     StepInfo {
         step: Step::Details,
@@ -215,6 +221,7 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
         "feats" => view! { <FeatsStep /> }.into_any(),
         "spells" => view! { <SpellsStep /> }.into_any(),
         "equipment" => view! { <EquipmentStep /> }.into_any(),
+        "custom" => view! { <crate::custom::CustomStep /> }.into_any(),
         "details" => view! { <DetailsStep /> }.into_any(),
         _ => view! { <ReviewStep issues=issues /> }.into_any(),
     };
@@ -426,7 +433,7 @@ pub fn icon(name: &str) -> impl IntoView {
 
 /// Choice pickers for every choice of a step, in build order.
 #[component]
-fn StepChoices(step: Step, #[prop(optional)] filter: Option<fn(&rules::ChoiceState) -> bool>) -> impl IntoView {
+pub fn StepChoices(step: Step, #[prop(optional)] filter: Option<fn(&rules::ChoiceState) -> bool>) -> impl IntoView {
     let ctx = expect_context::<EditorCtx>();
     let paths = Memo::new(move |_| {
         ctx.build.with(|b| b.choices.iter().filter(|c| c.step == step && filter.is_none_or(|f| f(c))).map(|c| c.path.clone()).collect::<Vec<_>>())

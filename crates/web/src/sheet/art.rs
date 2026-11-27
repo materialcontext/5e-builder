@@ -358,9 +358,9 @@ fn corner(d: &mut String, c: Corner, ex: f32, ey: f32, _i: usize) {
 }
 
 /// Wraps drawing into a full-page SVG with the shared defs.
-pub fn svg_page(body: &str, label: &str) -> String {
+pub fn svg_page(body: &str, label: &str, height: f32) -> String {
     format!(
-        r##"<svg class="rp-art" viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" aria-label="{}"><defs><linearGradient id="tail" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="{INK}" stop-opacity="0"/><stop offset="1" stop-color="{INK}" stop-opacity=".85"/></linearGradient><linearGradient id="fade" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="{FIELD}"/><stop offset=".7" stop-color="{FIELD}"/><stop offset="1" stop-color="{FIELD}" stop-opacity="0"/></linearGradient></defs><g fill="none">{body}</g></svg>"##,
+        r##"<svg class="rp-art" viewBox="0 0 {W} {height}" xmlns="http://www.w3.org/2000/svg" aria-label="{}"><defs><linearGradient id="tail" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="{INK}" stop-opacity="0"/><stop offset="1" stop-color="{INK}" stop-opacity=".85"/></linearGradient><linearGradient id="fade" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="{FIELD}"/><stop offset=".7" stop-color="{FIELD}"/><stop offset="1" stop-color="{FIELD}" stop-opacity="0"/></linearGradient></defs><g fill="none">{body}</g></svg>"##,
         esc(label)
     )
 }

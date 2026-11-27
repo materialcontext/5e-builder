@@ -54,20 +54,27 @@ pub fn SheetPage(id: String) -> impl IntoView {
         }
     };
 
-    let mut overflow = Overflow::default();
-    let p1 = replica::page1(&ch, &s, &mut overflow);
-    let p2 = replica::page2(&ch, &s, &mut overflow);
-    let page = |p: replica::Page, label: &'static str| {
-        view! {
-            <section class="page rp-page" aria-label=label>
-                <div class="rp">
-                    <div class="rp-art-wrap" inner_html=p.svg></div>
-                    <div class="rp-overlay" inner_html=p.html></div>
-                </div>
-            </section>
-        }
+    // Pages 1–2 depend on the paper: on longer paper the boxes nearest the
+    // bottom grow so the margins stay even all around.
+    let (ch1, s1) = (ch.clone(), s.clone());
+    let replica_pages = move || {
+        let ext = replica::extra_height(o.a4.get());
+        let mut overflow = Overflow::default();
+        let p1 = replica::page1(&ch1, &s1, &mut overflow, ext);
+        let p2 = replica::page2(&ch1, &s1, &mut overflow, ext);
+        let page = |p: replica::Page, label: &'static str| {
+            view! {
+                <section class="page rp-page" aria-label=label>
+                    <div class="rp" style=format!("height: calc({} * var(--u))", 774.0 + ext)>
+                        <div class="rp-art-wrap" inner_html=p.svg></div>
+                        <div class="rp-overlay" inner_html=p.html></div>
+                    </div>
+                </section>
+            }
+        };
+        let more = (!overflow.is_empty()).then(|| continuation_page(&s1, overflow));
+        view! { {page(p1, "Page 1: core statistics")}{page(p2, "Page 2: spells, story and equipment")}{more} }
     };
-    let more = (!overflow.is_empty()).then(|| continuation_page(&s, overflow));
     let (s2, s3) = (s.clone(), s.clone());
 
     view! {
@@ -91,9 +98,7 @@ pub fn SheetPage(id: String) -> impl IntoView {
             }}
             <main class="sheet" class:a4=move || o.a4.get() class:tint=move || o.tint.get() id="main" aria-label=format!("Character sheet for {}", s.name)>
                 <h1 class="visually-hidden">{format!("{} — character sheet", s.name)}</h1>
-                {page(p1, "Page 1: core statistics")}
-                {page(p2, "Page 2: spells, story and equipment")}
-                {more}
+                {replica_pages}
                 {move || o.feature_text.get().then(|| features_page(&s2))}
                 {move || o.spell_text.get().then(|| spell_text_page(&s3))}
             </main>

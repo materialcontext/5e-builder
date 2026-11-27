@@ -1,6 +1,7 @@
 //! 5e Builder web app (Leptos, client-side rendered).
 
 mod app;
+mod custom;
 mod editor;
 mod entries;
 mod picker;

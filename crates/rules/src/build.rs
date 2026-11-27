@@ -27,6 +27,8 @@ pub enum Step {
     Feats,
     Spells,
     Equipment,
+    /// Ad hoc additions that need not follow the rules as written.
+    Custom,
     Details,
 }
 
@@ -212,6 +214,7 @@ pub fn build(ch: &Character, comp: &Compendium) -> Build {
     w.classes();
     w.background();
     w.species();
+    w.custom();
     w.finish();
     w.out
 }
@@ -301,6 +304,34 @@ impl<'a> Walker<'a> {
             if legacy_asi || !is_asi_feature(&f.name) {
                 self.feature(f.clone(), &ctx);
             }
+        }
+    }
+
+    /// The player's ad hoc additions. Ability adjustments ignore the usual
+    /// 20 cap (and may be negative); feats skip their prerequisites.
+    fn custom(&mut self) {
+        if self.ch.custom.is_empty() {
+            return;
+        }
+        let ctx = Ctx {
+            path: "custom".into(),
+            level: self.char_level(),
+            origin: "Custom".into(),
+            step: Step::Custom,
+            gained_at: self.char_level(),
+            kind: FeatureKind::Other,
+            casting: None,
+            inherit_ability: None,
+        };
+        let mut grants = Vec::new();
+        for g in &self.ch.custom {
+            grants.push(g.clone());
+            if let Grant::Ability { ability, .. } = g {
+                grants.push(Grant::AbilityMax { ability: *ability, max: 30 });
+            }
+        }
+        for (i, g) in grants.iter().enumerate() {
+            self.walk(std::slice::from_ref(g), &Ctx { path: format!("custom/{i}"), ..ctx.clone() });
         }
     }
 

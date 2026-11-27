@@ -42,15 +42,38 @@ impl Overflow {
     }
 }
 
+// ------------------------------------------------------------------ page size
+
+thread_local! {
+    /// Height of the page being drawn, in reference units: the reference's
+    /// 774 plus the extra length the paper allows (see [`extra_height`]).
+    static PAGE_H: std::cell::Cell<f32> = const { std::cell::Cell::new(art::H) };
+}
+
+/// Extra page length, in reference units, so the margins are even on all
+/// four sides: the boxes nearest the bottom grow by this much. The sheet is
+/// scaled to the paper width (see `--u` in style.css).
+pub fn extra_height(a4: bool) -> f32 {
+    if a4 {
+        91.0 // 210 × 297 mm at 0.94 pt per unit
+    } else {
+        15.0 // 8.5 × 11 in at 0.967 pt per unit
+    }
+}
+
+fn page_h() -> f32 {
+    PAGE_H.with(|h| h.get())
+}
+
 // ------------------------------------------------------------------ HTML boxes
 
 fn place(x: f32, y: f32, w: f32, h: f32) -> String {
     format!(
         "left:{:.3}%;top:{:.3}%;width:{:.3}%;height:{:.3}%",
         x / art::W * 100.0,
-        y / art::H * 100.0,
+        y / page_h() * 100.0,
         w / art::W * 100.0,
-        h / art::H * 100.0
+        h / page_h() * 100.0
     )
 }
 
@@ -559,7 +582,8 @@ fn skill_width(name: &str) -> Option<f32> {
 
 // ------------------------------------------------------------------ page 1
 
-pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
+pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
+    PAGE_H.with(|h| h.set(art::H + ext));
     let mut g = Svg::default();
     let mut html = String::new();
     let d = &ch.details;
@@ -1088,7 +1112,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         222.7,
         569.9,
         173.6,
-        192.0,
+        192.0 + ext,
         [Chamfer(5.0), Chamfer(5.0), Square, Square],
     );
     g.text(
@@ -1099,7 +1123,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         Some(58.0),
         "SPECIES TRAITS",
     );
-    g.grid(222.7, 588.2, 173.6, 173.7);
+    g.grid(222.7, 588.2, 173.6, 173.7 + ext);
     g.title_rule(226.8, 588.2, 165.4);
     let mut species = feature_items(&|f| f.kind == FeatureKind::Species, false);
     let defenses = [
@@ -1122,7 +1146,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         228.0,
         591.5,
         163.0,
-        167.5,
+        167.5 + ext,
         1,
         0.0,
         species,
@@ -1136,14 +1160,14 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         407.3,
         569.9,
         183.7,
-        192.0,
+        192.0 + ext,
         [Chamfer(5.0), Chamfer(5.0), Square, Square],
     );
     g.text(487.9, 582.0, Font::Head, Anchor::Start, Some(22.2), "FEATS");
-    g.grid(407.3, 588.2, 183.7, 173.7);
+    g.grid(407.3, 588.2, 183.7, 173.7 + ext);
     g.title_rule(411.4, 588.2, 175.5);
     let feats = feature_items(&|f| in_feats_box(f), true);
-    let (h, rest) = list_box(412.6, 591.5, 173.5, 167.5, 1, 0.0, feats, "Feats");
+    let (h, rest) = list_box(412.6, 591.5, 173.5, 167.5 + ext, 1, 0.0, feats, "Feats");
     html.push_str(&h);
     push_items(of, "Feats", rest);
 
@@ -1152,10 +1176,12 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         12.0,
         619.5,
         199.6,
-        142.4,
+        142.4 + ext,
         [Square, Chamfer(5.0), Square, Notch(9.0)],
     );
-    g.knob(13.4, 760.4);
+    g.knob(13.4, 760.4 + ext);
+    // The weapons and tools areas split the extra length.
+    let half = ext / 2.0;
     g.text(
         34.4,
         631.7,
@@ -1164,10 +1190,10 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         Some(154.3),
         "EQUIPMENT TRAINING & PROFICIENCIES",
     );
-    g.grid(12.0, 637.9, 199.6, 124.0);
+    g.grid(12.0, 637.9, 199.6, 124.0 + ext);
     g.title_rule(16.0, 637.9, 191.4);
     g.title_rule(16.0, 658.8, 191.5);
-    g.title_rule(16.0, 718.6, 191.5);
+    g.title_rule(16.0, 718.6 + half, 191.5);
     g.text(16.0, 647.8, Font::Label, Anchor::Start, Some(26.6), "armor");
     g.text(
         16.0,
@@ -1185,7 +1211,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         Some(35.8),
         "weapons",
     );
-    g.text(16.0, 725.5, Font::Label, Anchor::Start, Some(23.8), "tools");
+    g.text(16.0, 725.5 + half, Font::Label, Anchor::Start, Some(23.8), "tools");
     let has = |p: &str| {
         s.armor_profs
             .iter()
@@ -1204,7 +1230,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         16.5,
         668.5,
         190.0,
-        48.5,
+        48.5 + half,
         &[("", joined(&s.weapon_profs))],
         "Weapon proficiencies",
     );
@@ -1215,9 +1241,9 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
     );
     let (h, rest) = text_box(
         16.5,
-        728.5,
+        728.5 + half,
         190.0,
-        31.0,
+        31.0 + half,
         &[("", joined(&s.tool_profs))],
         "Tool proficiencies",
     );
@@ -1228,7 +1254,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
     );
 
     Page {
-        svg: art::svg_page(&g.0, &format!("Character sheet page 1 for {}", s.name)),
+        svg: art::svg_page(&g.0, &format!("Character sheet page 1 for {}", s.name), art::H + ext),
         html,
     }
 }
@@ -1299,7 +1325,8 @@ fn spell_note(sp: &SpellLine, s: &Sheet) -> String {
     parts.join("; ")
 }
 
-pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
+pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
+    PAGE_H.with(|h| h.set(art::H + ext));
     let mut g = Svg::default();
     let mut html = String::new();
     let d = &ch.details;
@@ -1537,9 +1564,11 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         12.1,
         138.8,
         384.0,
-        625.2,
+        625.2 + ext,
         [Square, Chamfer(6.0), Square, Square],
     );
+    // Longer paper: the table gets as many extra rows as fit.
+    let rows = 30 + (ext / 19.44).floor() as usize;
     g.text(
         138.6,
         151.0,
@@ -1550,7 +1579,7 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
     );
     g.title_rule(16.2, 157.2, 375.9);
     for x in [40.1, 152.4, 186.5, 232.1, 302.5] {
-        g.vline(x, 163.0, 594.0, 0.5, DIVIDER);
+        g.vline(x, 163.0, 594.0 + ext, 0.5, DIVIDER);
     }
     g.text(
         19.1,
@@ -1624,7 +1653,7 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
     let (table, book): (Vec<&SpellLine>, Vec<&SpellLine>) =
         s.spells.iter().partition(|x| x.status != "Book");
     of.spellbook.extend(book.into_iter().cloned());
-    for i in 0..30 {
+    for i in 0..rows {
         let y = 192.6 + 19.44 * i as f32;
         g.field(17.6, y, 20.3);
         g.field(42.4, y, 107.8);
@@ -1674,7 +1703,7 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
             g.value(305.4, bl, 85.0, 6.2, Anchor::Start, &spell_note(sp, s));
         }
     }
-    of.spells.extend(table.into_iter().skip(30).cloned());
+    of.spells.extend(table.into_iter().skip(rows).cloned());
 
     // Appearance.
     let right_box = |g: &mut Svg, y: f32, h: f32, c: [Corner; 4]| g.frame(407.3, y, 183.7, h, c);
@@ -1795,7 +1824,7 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
     );
 
     // Equipment and attunement.
-    right_box(&mut g, 389.0, 269.3, [Chamfer(4.0); 4]);
+    right_box(&mut g, 389.0, 269.3 + ext, [Chamfer(4.0); 4]);
     g.text(
         475.9,
         401.3,
@@ -1804,8 +1833,10 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         Some(46.2),
         "EQUIPMENT",
     );
-    g.grid(407.3, 407.4, 183.7, 178.0);
+    g.grid(407.3, 407.4, 183.7, 178.0 + ext);
     g.title_rule(411.4, 407.4, 175.5);
+    // Attunement lines sit at the bottom of the box: move them down with it.
+    g.raw(&format!(r#"<g transform="translate(0 {ext})">"#));
     g.text(
         412.7,
         593.8,
@@ -1832,6 +1863,7 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
             g.value(431.0, y - 2.2, 154.0, 8.5, Anchor::Start, n);
         }
     }
+    g.raw("</g>");
     of.attuned.extend(attuned.into_iter().skip(3));
     let items: Vec<Item> = s
         .inventory
@@ -1848,13 +1880,13 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
             detail: i.notes.clone(),
         })
         .collect();
-    let (mut h, rest) = list_box(412.6, 410.0, 173.5, 165.0, 2, 8.0, items, "Equipment");
+    let (mut h, rest) = list_box(412.6, 410.0, 173.5, 165.0 + ext, 2, 8.0, items, "Equipment");
     h = h.replacen("rp-box list", "rp-box list equip", 1);
     html.push_str(&h);
     push_items(of, "Equipment", rest);
     g.value(
         585.4,
-        583.2,
+        583.2 + ext,
         173.0,
         6.0,
         Anchor::End,
@@ -1864,7 +1896,8 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
         ),
     );
 
-    // Coins.
+    // Coins: same size, moved to the bottom of the page.
+    g.raw(&format!(r#"<g transform="translate(0 {ext})">"#));
     right_box(
         &mut g,
         669.5,
@@ -1927,9 +1960,10 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow) -> Page {
             );
         }
     }
+    g.raw("</g>");
 
     Page {
-        svg: art::svg_page(&g.0, &format!("Character sheet page 2 for {}", s.name)),
+        svg: art::svg_page(&g.0, &format!("Character sheet page 2 for {}", s.name), art::H + ext),
         html,
     }
 }

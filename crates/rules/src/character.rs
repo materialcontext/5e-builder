@@ -30,6 +30,10 @@ pub struct Character {
     pub starting_signature: String,
     /// Starting coins (cp) last applied, so a re-sync adjusts by the difference.
     pub starting_coins_cp: u32,
+    /// Ad hoc additions outside the rules as written (house rules, DM
+    /// rewards, homebrew): ability adjustments, proficiencies, feats, spells,
+    /// features, bonuses. Applied like any other grant, labelled "Custom".
+    pub custom: Vec<compendium::Grant>,
     pub created: String,
     pub updated: String,
 }
@@ -52,6 +56,7 @@ impl Default for Character {
             starting_equipment_applied: false,
             starting_signature: String::new(),
             starting_coins_cp: 0,
+            custom: Vec::new(),
             created: String::new(),
             updated: String::new(),
         }

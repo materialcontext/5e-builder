@@ -1025,3 +1025,37 @@ fn always_prepared_spells_are_marked_when_preparing() {
     // Not blocked: it can still be picked deliberately.
     assert!(bless.disabled.is_none());
 }
+
+#[test]
+fn custom_additions_apply_outside_the_rules() {
+    use compendium::{AcWhen, Feature, Grant, SpellAbility, SpellGrant, SpellGroup, SpellKind, SpellPick};
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("fighter|xphb", "soldier|xphb", "human|xphb");
+    autofill(&mut ch, comp);
+    let before = build(&ch, comp);
+    let s0 = sheet(&ch, &before, comp);
+    ch.custom = vec![
+        Grant::Ability { ability: Ability::Str, amount: 8 },
+        Grant::Ability { ability: Ability::Cha, amount: -2 },
+        Grant::Prof(Prof::Skill(Skill::Arcana)),
+        Grant::Feat(Key("war caster|xphb".into())), // needs spellcasting: not checked here
+        Grant::Spells(SpellGroup {
+            name: Some("Custom".into()),
+            ability: SpellAbility::Fixed(Ability::Cha),
+            spells: vec![SpellGrant { level: 0, kind: SpellKind::Innate("1/long rest".into()), pick: SpellPick::Fixed(Key("misty step|xphb".into())) }],
+        }),
+        Grant::Feature(Feature { name: "Blessing of the Moon".into(), body: vec![compendium::Entry::P("A DM reward.".into())] }),
+        Grant::HpBonus(5),
+        Grant::AcBonus { amount: 1, when: AcWhen::Always },
+    ];
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    assert_eq!(b.score(Ability::Str), before.score(Ability::Str) + 8, "custom increases ignore the 20 cap");
+    assert_eq!(b.score(Ability::Cha), before.score(Ability::Cha) - 2);
+    assert!(b.has_prof(&Prof::Skill(Skill::Arcana)));
+    assert!(b.has_feat_named("War Caster"));
+    assert!(s.spells.iter().any(|x| x.name == "Misty Step"));
+    assert!(s.features.iter().any(|f| f.feature.name == "Blessing of the Moon"));
+    assert_eq!(s.hp_max, s0.hp_max + 5);
+    assert_eq!(s.armor_class, s0.armor_class + 1);
+}
