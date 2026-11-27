@@ -447,6 +447,18 @@ pub fn has_spellcasting_feature(build: &Build, comp: &Compendium) -> bool {
     })
 }
 
+/// Where a known spell comes from, in words: "Feat: Magic Initiate" → "the
+/// Magic Initiate feat", "Cleric 3 (Life)" → "Life (Cleric 3)".
+fn spell_origin(origin: &str) -> String {
+    if let Some(f) = origin.strip_prefix("Feat: ") {
+        return format!("the {} feat", f.split(';').next().unwrap_or(f).trim());
+    }
+    match origin.split_once(" (") {
+        Some((class, sub)) if class.chars().last().is_some_and(|c| c.is_ascii_digit()) => format!("{} ({class})", sub.trim_end_matches(')')),
+        _ => origin.to_string(),
+    }
+}
+
 fn language_kind_label(kind: &str) -> &'static str {
     match kind {
         "standard" => "Standard language",
@@ -524,10 +536,16 @@ fn spell_options(filter: &SpellFilter, choice: &ChoiceState, build: &Build, ch: 
         .and_then(|p| build.choice(p))
         .map(|c| c.selected.iter().map(String::as_str).collect());
     // Spells the character already has from another choice or feature.
+    // Only the copy this choice itself adds is ignored, so a spell that is
+    // picked here *and* always prepared elsewhere still says so.
+    let from_this_choice = |s: &crate::build::KnownSpell| {
+        use crate::build::SpellMode::*;
+        choice.selected.contains(&s.key.0) && s.class == choice.class && matches!(s.mode, Prepared | Known | Cantrip | Spellbook)
+    };
     let others: Vec<&crate::build::KnownSpell> = build
         .spells
         .iter()
-        .filter(|s| !choice.selected.contains(&s.key.0))
+        .filter(|s| !from_this_choice(s))
         .filter(|s| filter.within_choice.is_none() || !matches!(s.mode, crate::build::SpellMode::Spellbook))
         .collect();
     // Spells added to this class's list by subclasses or features.
@@ -578,12 +596,41 @@ fn spell_options(filter: &SpellFilter, choice: &ChoiceState, build: &Build, ch: 
                     b
                 });
             o.group = Some(lvl.clone());
-            if let Some(k) = others.iter().find(|k| k.key == s.key) {
-                if k.class.is_some() && k.class == choice.class {
-                    o.disabled = Some("Already known".into());
-                } else {
-                    o.warning = Some(format!("Already known ({})", k.origin));
-                }
+            o.facets = vec![
+                ("Level".into(), lvl.clone()),
+                ("School".into(), s.school_name().to_string()),
+                ("Source".into(), comp.source_name(&s.source)),
+            ];
+            if s.concentration {
+                o.facets.push(("Casting".into(), "Concentration".into()));
+            }
+            if s.ritual {
+                o.facets.push(("Casting".into(), "Ritual".into()));
+            }
+            // Already on the character's list from somewhere else: say exactly how.
+            let mine: Vec<&&crate::build::KnownSpell> = others.iter().filter(|k| k.key == s.key).collect();
+            let always = mine.iter().find(|k| matches!(k.mode, crate::build::SpellMode::AlwaysPrepared));
+            let innate = mine.iter().find(|k| matches!(k.mode, crate::build::SpellMode::Innate(_)));
+            if let Some(k) = mine.iter().find(|k| k.class.is_some() && k.class == choice.class && !matches!(k.mode, crate::build::SpellMode::AlwaysPrepared)) {
+                o.disabled = Some(format!("Already chosen ({})", spell_origin(&k.origin)));
+                o.facets.push(("On your list".into(), "Already chosen".into()));
+            } else if let Some(k) = always {
+                o.warning = Some(format!(
+                    "Always prepared — from {}{}",
+                    spell_origin(&k.origin),
+                    if s.level > 0 && choice.class.is_some() { "; preparing it again uses up a slot on your list" } else { "" }
+                ));
+                o.facets.push(("On your list".into(), "Always prepared".into()));
+            } else if let Some(k) = innate {
+                let how = match &k.mode {
+                    crate::build::SpellMode::Innate(u) if !u.is_empty() => u.clone(),
+                    _ => "without a slot".into(),
+                };
+                o.warning = Some(format!("You can already cast it {how} — from {}", spell_origin(&k.origin)));
+                o.facets.push(("On your list".into(), "Castable another way".into()));
+            } else if let Some(k) = mine.first() {
+                o.warning = Some(format!("Already known — from {}", spell_origin(&k.origin)));
+                o.facets.push(("On your list".into(), "Known another way".into()));
             }
             o
         })

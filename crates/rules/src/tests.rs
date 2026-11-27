@@ -999,3 +999,29 @@ fn no_book_codes_in_player_facing_text() {
     let unnamed: Vec<&str> = comp.sources.iter().filter(|s| s.name == s.id).map(|s| s.id.as_str()).collect();
     assert!(unnamed.is_empty(), "books shown by code instead of title: {unnamed:?}");
 }
+
+#[test]
+fn always_prepared_spells_are_marked_when_preparing() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("cleric|xphb", "acolyte|xphb", "human|xphb");
+    for _ in 1..3 {
+        ch.level_up(Key("cleric|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let path = build(&ch, comp).choices.iter().find(|c| matches!(c.options, Options::Subclass { .. })).unwrap().path.clone();
+    ch.set_choice(&path, vec!["life|xphb|cleric|xphb".into()]);
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let prepared = b
+        .choices
+        .iter()
+        .find(|c| c.class.as_ref().is_some_and(|k| k.0 == "cleric|xphb") && matches!(&c.options, Options::Spells(f) if !f.levels.contains(&0)))
+        .expect("cleric prepared spells");
+    let opts = options(prepared, &b, &ch, comp);
+    let bless = opts.iter().find(|o| o.label == "Bless").expect("Bless on the cleric list");
+    let w = bless.warning.clone().unwrap_or_default();
+    assert!(w.starts_with("Always prepared") && w.contains("Life"), "{w}");
+    assert!(bless.facets.contains(&("On your list".into(), "Always prepared".into())));
+    // Not blocked: it can still be picked deliberately.
+    assert!(bless.disabled.is_none());
+}

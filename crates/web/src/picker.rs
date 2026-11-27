@@ -12,16 +12,21 @@ use std::collections::{BTreeMap, BTreeSet};
 /// everything else alphabetically.
 fn facet_order(v: &str) -> (usize, String) {
     let abilities = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"];
-    match abilities.iter().position(|a| *a == v) {
-        Some(i) => (i, String::new()),
-        None if v == "None" => (0, String::new()),
-        None => (10, v.to_string()),
+    if let Some(i) = abilities.iter().position(|a| *a == v) {
+        return (i, String::new());
     }
+    if v == "None" || v == "Cantrip" {
+        return (0, String::new());
+    }
+    if let Some(n) = v.strip_prefix("Level ").and_then(|n| n.parse::<usize>().ok()) {
+        return (n, String::new());
+    }
+    (10, v.to_string())
 }
 
 /// Facet → values (with counts) present in a list, in display order.
 fn facets_of(opts: &[OptionItem]) -> Vec<(String, Vec<(String, usize)>)> {
-    let order = ["Category", "Ability increase", "Grants", "Prerequisite", "Other", "Edition", "Source"];
+    let order = ["Category", "Level", "On your list", "School", "Casting", "Ability increase", "Grants", "Prerequisite", "Other", "Edition", "Source"];
     let mut map: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
     for o in opts {
         for (f, v) in &o.facets {
@@ -266,9 +271,12 @@ fn filter_menu(
         let avail = only_available.get();
         opts.with(|o| (o.iter().filter(|x| passes(x, &m) && (!avail || x.disabled.is_none())).count(), o.len()))
     };
+    // A group is useful if it splits the list: several values, or one value
+    // that only some options have ("On your list: Always prepared").
+    let total = opts.with(|o| o.len());
     let groups = facets
         .into_iter()
-        .filter(|(_, vals)| vals.len() > 1)
+        .filter(|(_, vals)| vals.len() > 1 || vals.first().is_some_and(|(_, n)| *n < total))
         .enumerate()
         .map(|(gi, (facet, vals))| {
             let f2 = facet.clone();
@@ -366,6 +374,10 @@ fn preview(body: &[compendium::Entry]) -> String {
         None
     }
     let text = first(body).unwrap_or_default();
+    // A spell's casting line is a list of facts, not a sentence: keep it whole.
+    if text.starts_with("Casting time:") {
+        return text;
+    }
     let end = text.find(". ").map(|i| i + 1).unwrap_or(text.len());
     let s = &text[..end];
     if s.chars().count() > 160 {
