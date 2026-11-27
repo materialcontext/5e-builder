@@ -19,7 +19,12 @@ fn entry(e: Entry) -> AnyView {
         }
         .into_any(),
         Entry::List(items) => view! { <ul>{items.into_iter().map(|i| view! { <li>{entry(i)}</li> }).collect_view()}</ul> }.into_any(),
-        Entry::Table { caption, head, rows } => view! {
+        // Wide rule tables scroll inside their own box on narrow screens
+        // instead of pushing the page sideways (focusable for keyboard users).
+        Entry::Table { caption, head, rows } => {
+            let label = caption.clone().unwrap_or_else(|| "Table".into());
+            view! {
+            <div class="entry-table-wrap" tabindex="0" role="region" aria-label=label>
             <table class="entry-table">
                 {caption.map(|c| view! { <caption>{c}</caption> })}
                 <thead><tr>{head.into_iter().map(|h| view! { <th>{h}</th> }).collect_view()}</tr></thead>
@@ -27,7 +32,9 @@ fn entry(e: Entry) -> AnyView {
                     {rows.into_iter().map(|r| view! { <tr>{r.into_iter().map(|c| view! { <td>{c}</td> }).collect_view()}</tr> }).collect_view()}
                 </tbody>
             </table>
+            </div>
+            }
+            .into_any()
         }
-        .into_any(),
     }
 }

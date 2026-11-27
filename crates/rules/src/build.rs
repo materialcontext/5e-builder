@@ -17,9 +17,14 @@ use std::collections::BTreeMap;
 pub enum Step {
     Basics,
     Class,
+    /// Base scores come right after the class and before anything with a
+    /// feat (backgrounds, species, class levels), so ability prerequisites
+    /// can be judged when feats are picked.
+    Abilities,
     Background,
     Species,
-    Abilities,
+    /// Feats from class levels (ASI-or-feat, fighting style, epic boon).
+    Feats,
     Spells,
     Equipment,
     Details,
@@ -590,6 +595,7 @@ impl<'a> Walker<'a> {
         let selected: Vec<String> = self.ch.selected(&path).to_vec();
         let step = match &c.options {
             Options::Spells(_) => Step::Spells,
+            Options::Feats { .. } if ctx.step == Step::Class => Step::Feats,
             _ => ctx.step,
         };
         let class = ctx.casting.as_ref().map(|c| c.1.clone());
@@ -607,7 +613,7 @@ impl<'a> Walker<'a> {
         // Formula counts are resolved later; expand everything selected for now.
         let limit = if count == 0 { selected.len() } else { count as usize };
         let picked: Vec<String> = selected.into_iter().take(limit).collect();
-        let child = Ctx { path: path.clone(), ..ctx.clone() };
+        let child = Ctx { path: path.clone(), step: if step == Step::Feats { Step::Feats } else { ctx.step }, ..ctx.clone() };
         match (&c.count, &c.options) {
             // Leveled picks (maneuvers, invocations…): each one is labelled with
             // the class level at which it became available.

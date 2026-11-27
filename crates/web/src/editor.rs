@@ -95,37 +95,69 @@ impl EditorCtx {
     }
 }
 
-pub const STEPS: [(Step, &str); 9] = [
-    (Step::Basics, "Basics"),
-    (Step::Class, "Class"),
-    (Step::Background, "Background"),
-    (Step::Species, "Species"),
-    (Step::Abilities, "Abilities"),
-    (Step::Spells, "Spells"),
-    (Step::Equipment, "Equipment"),
-    (Step::Details, "Details"),
-    (Step::Basics, "Review"),
-];
+/// The wizard's steps, in order: page title, URL slug and one-line guidance
+/// shown under the title. `Step::Basics` doubles as the review page's step.
+pub struct StepInfo {
+    pub step: Step,
+    pub title: &'static str,
+    pub slug: &'static str,
+    pub intro: &'static str,
+}
 
-/// One-line guidance shown under each step title (same place on every step).
-pub const STEP_INTROS: [&str; 9] = [
-    "Name your character and pick the rules options and books you want to use.",
-    "Your class decides how you fight, what you're good at and how you grow. Pick your starting class and level.",
-    "Your background is your life before adventuring. Under the 2024 rules it also sets your ability score increases and an origin feat.",
-    "Your species gives you traits like size, speed, senses and special abilities.",
-    "Assign your six ability scores, then see how your background or species raises them.",
-    "Choose the cantrips and spells your character knows or prepares. Only casters and characters with magical traits have choices here.",
-    "Pick your starting equipment, then add or remove anything you like. Equip armor and weapons so the sheet can use them.",
-    "Give your character a personality, appearance and history. Everything here is optional except the name.",
-    "Check that nothing is missing, then open the printable sheet.",
+pub const STEPS: [StepInfo; 10] = [
+    StepInfo { step: Step::Basics, title: "Basics", slug: "basics", intro: "Name your character and pick the rules options and books you want to use." },
+    StepInfo {
+        step: Step::Class,
+        title: "Class",
+        slug: "class",
+        intro: "Your class decides how you fight, what you're good at and how you grow. Pick your starting class and level.",
+    },
+    StepInfo {
+        step: Step::Abilities,
+        title: "Abilities",
+        slug: "abilities",
+        intro: "Assign your six base ability scores. Your background raises them next; feats come after, so their prerequisites use your real scores.",
+    },
+    StepInfo {
+        step: Step::Background,
+        title: "Background",
+        slug: "background",
+        intro: "Your background is your life before adventuring. Under the 2024 rules it also sets your ability score increases and an origin feat.",
+    },
+    StepInfo { step: Step::Species, title: "Species", slug: "species", intro: "Your species gives you traits like size, speed, senses and special abilities." },
+    StepInfo {
+        step: Step::Feats,
+        title: "Feats",
+        slug: "feats",
+        intro: "Feats from your class levels: Ability Score Improvements or feats, fighting styles and epic boons. Prerequisites use your final scores.",
+    },
+    StepInfo {
+        step: Step::Spells,
+        title: "Spells",
+        slug: "spells",
+        intro: "Choose the cantrips and spells your character knows or prepares. Only casters and characters with magical traits have choices here.",
+    },
+    StepInfo {
+        step: Step::Equipment,
+        title: "Equipment",
+        slug: "equipment",
+        intro: "Pick your starting equipment, then add or remove anything you like. Equip armor and weapons so the sheet can use them.",
+    },
+    StepInfo {
+        step: Step::Details,
+        title: "Details",
+        slug: "details",
+        intro: "Give your character a personality, appearance and history. Everything here is optional except the name.",
+    },
+    StepInfo { step: Step::Basics, title: "Review", slug: "review", intro: "Check that nothing is missing, then open the printable sheet." },
 ];
 
 pub fn step_slug(i: usize) -> &'static str {
-    ["basics", "class", "background", "species", "abilities", "spells", "equipment", "details", "review"][i]
+    STEPS[i].slug
 }
 
 pub fn step_index(slug: &str) -> usize {
-    (0..STEPS.len()).find(|&i| step_slug(i) == slug).unwrap_or(0)
+    STEPS.iter().position(|s| s.slug == slug).unwrap_or(0)
 }
 
 #[component]
@@ -174,22 +206,23 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
         }
     });
 
-    let body = match current {
-        0 => view! { <BasicsStep /> }.into_any(),
-        1 => view! { <ClassStep /> }.into_any(),
-        2 => view! { <BackgroundStep /> }.into_any(),
-        3 => view! { <SpeciesStep /> }.into_any(),
-        4 => view! { <AbilitiesStep /> }.into_any(),
-        5 => view! { <SpellsStep /> }.into_any(),
-        6 => view! { <EquipmentStep /> }.into_any(),
-        7 => view! { <DetailsStep /> }.into_any(),
+    let body = match STEPS[current].slug {
+        "basics" => view! { <BasicsStep /> }.into_any(),
+        "class" => view! { <ClassStep /> }.into_any(),
+        "abilities" => view! { <AbilitiesStep /> }.into_any(),
+        "background" => view! { <BackgroundStep /> }.into_any(),
+        "species" => view! { <SpeciesStep /> }.into_any(),
+        "feats" => view! { <FeatsStep /> }.into_any(),
+        "spells" => view! { <SpellsStep /> }.into_any(),
+        "equipment" => view! { <EquipmentStep /> }.into_any(),
+        "details" => view! { <DetailsStep /> }.into_any(),
         _ => view! { <ReviewStep issues=issues /> }.into_any(),
     };
-    let prev = (current > 0).then(|| (format!("#/edit/{}/{}", id, step_slug(current - 1)), STEPS[current - 1].1));
-    let next = (current + 1 < STEPS.len()).then(|| (format!("#/edit/{}/{}", id, step_slug(current + 1)), STEPS[current + 1].1));
+    let prev = (current > 0).then(|| (format!("#/edit/{}/{}", id, step_slug(current - 1)), STEPS[current - 1].title));
+    let next = (current + 1 < STEPS.len()).then(|| (format!("#/edit/{}/{}", id, step_slug(current + 1)), STEPS[current + 1].title));
     let sheet_href = format!("#/sheet/{id}");
     let c5 = comp.clone();
-    let this_step = STEPS[current].0;
+    let this_step = STEPS[current].step;
     let is_review = current == STEPS.len() - 1;
 
     let nav = move || {
@@ -197,8 +230,8 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
         STEPS
             .iter()
             .enumerate()
-            .map(|(i, (step, label))| {
-                let n = if i == STEPS.len() - 1 { iss.len() } else { iss.iter().filter(|x| x.step == *step).count() };
+            .map(|(i, info)| {
+                let n = if i == STEPS.len() - 1 { iss.len() } else { iss.iter().filter(|x| x.step == info.step).count() };
                 let href = format!("#/edit/{}/{}", id_v.get_value(), step_slug(i));
                 let status = if i == STEPS.len() - 1 {
                     if n == 0 { "ready".to_string() } else { format!("{n} to do") }
@@ -212,7 +245,7 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
                         <a class="step" class:active=i == current class:ok=n == 0 href=href
                             aria-current=(i == current).then_some("step")>
                             <span class="step-num" aria-hidden="true">{if n == 0 && i != current { "✓".to_string() } else { (i + 1).to_string() }}</span>
-                            <span class="step-label">{*label}</span>
+                            <span class="step-label">{info.title}</span>
                             <span class="visually-hidden">{format!(", {status}")}</span>
                             {(n > 0).then(|| view! { <span class="step-badge" aria-hidden="true">{n}</span> })}
                         </a>
@@ -241,8 +274,8 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
             <main class="step-body" id="main" tabindex="-1">
                 <header class="step-header">
                     <p class="step-kicker">{format!("Step {} of {}", current + 1, STEPS.len())}</p>
-                    <h1>{STEPS[current].1}</h1>
-                    <p class="lede">{STEP_INTROS[current]}</p>
+                    <h1>{STEPS[current].title}</h1>
+                    <p class="lede">{STEPS[current].intro}</p>
                 </header>
                 {(!is_review).then(|| view! { <StepTodo step=this_step issues=issues /> })}
                 {body}
@@ -253,7 +286,7 @@ pub fn Editor(id: String, step: String) -> impl IntoView {
                 <span class="spacer"></span>
                 {move || {
                     let iss = issues.get();
-                    let target = STEPS.iter().position(|(s, _)| iss.iter().any(|i| i.step == *s))?;
+                    let target = STEPS.iter().position(|s| iss.iter().any(|i| i.step == s.step))?;
                     (target != current).then(|| {
                         let href = format!("#/edit/{}/{}", id_v.get_value(), step_slug(target));
                         view! { <a class="button ghost hide-sm" href=href title="Go to the first step with something left to do">"Next unfinished"</a> }
@@ -380,6 +413,7 @@ pub fn icon(name: &str) -> impl IntoView {
         "dice" => "M12 2 3 7v10l9 5 9-5V7zM12 22V12M3 7l9 5 9-5",
         "info" => "M12 16v-4M12 8h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z",
         "x" => "M18 6 6 18M6 6l12 12",
+        "filter" => "M3 4h18l-7 8.5V19l-4 2v-8.5z",
         "upload" => "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12",
         "download" => "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
         _ => "",
@@ -748,6 +782,7 @@ fn BackgroundStep() -> impl IntoView {
         </Show>
         <Show when=move || !browsing.get() && selected.get().is_some()>
             {summary.clone()}
+            {score_strip(ctx)}
             <StepChoices step=Step::Background />
         </Show>
     }
@@ -830,6 +865,14 @@ fn AbilitiesStep() -> impl IntoView {
         })
     };
     let spent = move || ctx.ch.with(|c| c.abilities.scores.iter().filter_map(|s| rules::point_cost(*s)).map(|x| x as u32).sum::<u32>());
+    // Point buy: a score can go up while it stays ≤ 15 and within the 27-point budget.
+    fn can_raise(scores: &[u8; 6], i: usize) -> bool {
+        let total: u32 = scores.iter().filter_map(|s| rules::point_cost(*s)).map(u32::from).sum();
+        match (rules::point_cost(scores[i]), rules::point_cost(scores[i] + 1)) {
+            (Some(now), Some(next)) => total - u32::from(now) + u32::from(next) <= 27,
+            _ => false,
+        }
+    }
     let problem = move || ctx.ch.with(|c| rules::ability_problem(&c.abilities));
 
     let rows = move || {
@@ -852,9 +895,9 @@ fn AbilitiesStep() -> impl IntoView {
                 let input = match m {
                     AbilityMethod::PointBuy => view! {
                         <div class="stepper">
-                            <button aria-label=format!("Decrease {}", a.name()) disabled=base[i] <= 8 on:click=move |_| ctx.edit(|c| c.abilities.scores[i] = c.abilities.scores[i].saturating_sub(1).max(8))>"−"</button>
+                            <button aria-label=format!("Decrease {}", a.name()) disabled={base[i] <= 8} on:click=move |_| ctx.edit(|c| c.abilities.scores[i] = c.abilities.scores[i].saturating_sub(1).max(8))>"−"</button>
                             <span class="score" aria-live="polite" aria-label=format!("{} base score {}", a.name(), base[i])>{base[i]}</span>
-                            <button aria-label=format!("Increase {}", a.name()) disabled=base[i] >= 15 on:click=move |_| ctx.edit(|c| c.abilities.scores[i] = (c.abilities.scores[i] + 1).min(15))>"+"</button>
+                            <button aria-label=format!("Increase {}", a.name()) disabled={!can_raise(&base, i)} on:click=move |_| ctx.edit(|c| { if can_raise(&c.abilities.scores, i) { c.abilities.scores[i] += 1 } })>"+"</button>
                             <span class="muted small">{format!("cost {}", rules::point_cost(base[i]).unwrap_or(0))}</span>
                         </div>
                     }
@@ -931,9 +974,19 @@ fn AbilitiesStep() -> impl IntoView {
                 <tbody>{rows}</tbody>
             </table>
         </div>
-        <h2>"Ability score increases"</h2>
-        <StepChoices step=Step::Background filter=is_ability_choice />
-        <StepChoices step=Step::Species filter=is_ability_choice />
+        {move || {
+            let has = ctx.build.with(|b| b.choices.iter().any(|c| matches!(c.step, Step::Background | Step::Species) && is_ability_choice(c)));
+            if has {
+                view! {
+                    <h2>"Ability score increases"</h2>
+                    <StepChoices step=Step::Background filter=is_ability_choice />
+                    <StepChoices step=Step::Species filter=is_ability_choice />
+                }
+                .into_any()
+            } else {
+                view! { <p class="muted">"Next, your background raises some of these scores. Feats come after that, so their prerequisites see your final scores."</p> }.into_any()
+            }
+        }}
     }
 }
 
@@ -989,6 +1042,36 @@ fn SpellsStep() -> impl IntoView {
     view! {
         {casting}
         <StepChoices step=Step::Spells />
+    }
+}
+
+// ------------------------------------------------------------------ Feats
+
+/// Current ability scores, shown where choices depend on them.
+fn score_strip(ctx: EditorCtx) -> impl IntoView {
+    move || {
+        let cells = Ability::ALL
+            .iter()
+            .map(|&a| {
+                let v = ctx.build.with(|b| b.score(a));
+                view! { <div class="score-cell"><span class="stat-label">{a.abbr()}</span><b>{v}</b><span class="muted small">{signed(modifier(v))}</span></div> }
+            })
+            .collect_view();
+        view! { <div class="score-strip" role="group" aria-label="Current ability scores">{cells}</div> }
+    }
+}
+
+#[component]
+fn FeatsStep() -> impl IntoView {
+    let ctx = expect_context::<EditorCtx>();
+    let any = Memo::new(move |_| ctx.build.with(|b| b.choices.iter().any(|c| c.step == Step::Feats)));
+    view! {
+        {score_strip(ctx)}
+        <Show when=move || any.get() fallback=|| view! {
+            <p class="muted">"No feat choices yet. Your class grants them at certain levels (usually 4, 8, 12, 16 and 19); origin feats are picked on the Background and Species steps."</p>
+        }>
+            <StepChoices step=Step::Feats />
+        </Show>
     }
 }
 
@@ -1180,9 +1263,9 @@ fn ReviewStep(issues: Memo<Vec<rules::Issue>>) -> impl IntoView {
         view! {
             <ul class="issues">
                 {iss.into_iter().map(|i| {
-                    let idx = STEPS.iter().position(|(s, _)| *s == i.step).unwrap_or(0);
+                    let idx = STEPS.iter().position(|s| s.step == i.step).unwrap_or(0);
                     let href = format!("#/edit/{}/{}", ctx.id.get_value(), step_slug(idx));
-                    view! { <li><a href=href>{STEPS[idx].1}</a>": "{i.text}</li> }
+                    view! { <li><a href=href>{STEPS[idx].title}</a>": "{i.text}</li> }
                 }).collect_view()}
             </ul>
         }

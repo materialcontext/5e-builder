@@ -275,9 +275,82 @@ fn feat_record(o: &Obj, version_of: Option<Key>) -> Feat {
         repeatable: o.get("repeatable").and_then(Value::as_bool).unwrap_or(false),
         version_of,
         grants,
-        body: text::entries(o.get("entries").unwrap_or(&Value::Null), &Refs::default()),
+        body: with_ability_text(text::entries(o.get("entries").unwrap_or(&Value::Null), &Refs::default()), o.get("ability")),
         name,
     }
+}
+
+/// 5etools keeps a feat's ability score increase in its structured `ability`
+/// field and only writes the sentence when displaying the feat. Write it into
+/// the description too ("Increase your Strength or Dexterity score by 1, to a
+/// maximum of 20."), as the first benefit, unless the text already says it.
+fn with_ability_text(mut body: Vec<Entry>, ability: Option<&Value>) -> Vec<Entry> {
+    let Some(alts) = ability.and_then(Value::as_array) else { return body };
+    let name = |a: &str| match a {
+        "str" => "Strength",
+        "dex" => "Dexterity",
+        "con" => "Constitution",
+        "int" => "Intelligence",
+        "wis" => "Wisdom",
+        "cha" => "Charisma",
+        _ => "",
+    };
+    let or_list = |v: &[&str], word: &str| match v {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [a, b] => format!("{a} {word} {b}"),
+        _ => format!("{}, {word} {}", v[..v.len() - 1].join(", "), v[v.len() - 1]),
+    };
+    let mut sentences = Vec::new();
+    for alt in alts.iter().filter_map(Value::as_object) {
+        if alt.get("hidden").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        let max = alt.get("max").and_then(Value::as_u64).unwrap_or(20);
+        if let Some(c) = alt.get("choose").and_then(Value::as_object) {
+            if let Some(entry) = c.get("entry").and_then(Value::as_str) {
+                sentences.push(entry.to_string());
+                continue;
+            }
+            let from: Vec<&str> = c.get("from").and_then(Value::as_array).map(|v| v.iter().filter_map(Value::as_str).map(name).collect()).unwrap_or_default();
+            let amount = c.get("amount").and_then(Value::as_u64).unwrap_or(1);
+            let count = c.get("count").and_then(Value::as_u64).unwrap_or(1);
+            sentences.push(if from.len() == 6 {
+                match count {
+                    1 => format!("Increase one ability score of your choice by {amount}, to a maximum of {max}."),
+                    n => format!("Increase {n} different ability scores of your choice by {amount} each, to a maximum of {max}."),
+                }
+            } else {
+                format!("Increase your {} score by {amount}, to a maximum of {max}.", or_list(&from, "or"))
+            });
+        }
+        let fixed: Vec<(&str, u64)> = ["str", "dex", "con", "int", "wis", "cha"].iter().filter_map(|a| alt.get(*a).and_then(Value::as_u64).map(|n| (name(a), n))).collect();
+        if !fixed.is_empty() {
+            let same = fixed.iter().all(|(_, n)| *n == fixed[0].1);
+            let names: Vec<&str> = fixed.iter().map(|(a, _)| *a).collect();
+            sentences.push(if same {
+                format!("Increase your {} score{} by {}, to a maximum of {max}.", or_list(&names, "and"), if names.len() > 1 { "s" } else { "" }, fixed[0].1)
+            } else {
+                format!("Increase your {}, to a maximum of {max}.", fixed.iter().map(|(a, n)| format!("{a} score by {n}")).collect::<Vec<_>>().join(" and "))
+            });
+        }
+    }
+    if sentences.is_empty() {
+        return body;
+    }
+    let already = Entry::plain(&body).to_lowercase();
+    if already.contains("score by 1") || already.contains("score by 2") || already.contains("ability score increase") {
+        return body;
+    }
+    let text = if sentences.len() == 1 { sentences.remove(0) } else { format!("Choose one: {}", sentences.join(" Or: ")) };
+    let section = Entry::Section { name: Some("Ability Score Increase".into()), body: vec![Entry::P(text)] };
+    // After a "You gain the following benefits." lead-in, like the books.
+    let at = match body.first() {
+        Some(Entry::P(t)) if t.trim_end().ends_with(['.', ':']) && t.to_lowercase().contains("following") => 1,
+        _ => 0,
+    };
+    body.insert(at, section);
+    body
 }
 
 pub fn feats(data: &Value) -> Vec<Feat> {

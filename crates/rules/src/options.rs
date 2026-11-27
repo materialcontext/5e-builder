@@ -20,11 +20,14 @@ pub struct OptionItem {
     pub body: Vec<Entry>,
     /// Filter group for long lists (spell level, feat category, ...).
     pub group: Option<String>,
+    /// Filter tags as (facet, value), e.g. ("Ability increase", "Strength").
+    /// The picker builds its filter menu from whatever facets a list has.
+    pub facets: Vec<(String, String)>,
 }
 
 impl OptionItem {
     fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
-        OptionItem { value: value.into(), label: label.into(), detail: String::new(), disabled: None, warning: None, body: vec![], group: None }
+        OptionItem { value: value.into(), label: label.into(), detail: String::new(), disabled: None, warning: None, body: vec![], group: None, facets: vec![] }
     }
     fn detail(mut self, d: impl Into<String>) -> Self {
         self.detail = d.into();
@@ -400,12 +403,15 @@ fn feat_options(categories: &[String], build: &Build, ch: &Character, comp: &Com
     let mut out: Vec<OptionItem> = dedupe(feats.into_iter())
         .into_iter()
         .map(|f| {
+            // Category, ability increases and grants are shown as tags; the
+            // detail line carries the prerequisite and the book.
             let detail = match &f.prereq {
-                Some(p) if !p.text.is_empty() => format!("{} · {}", f.category_label(), p.text),
-                _ => format!("{} · {}", f.category_label(), f.source),
+                Some(p) if !p.text.is_empty() => format!("Requires {} · {}", p.text, comp.source_name(&f.source)),
+                _ => format!("No prerequisite · {}", comp.source_name(&f.source)),
             };
             let mut o = OptionItem::new(f.key.0.clone(), f.name.clone()).detail(detail).body(f.body.clone());
             o.group = Some(f.category_label().to_string());
+            o.facets = feat_facets(f, comp);
             if taken.contains(&f.key) && !f.repeatable {
                 o.disabled = Some("Already taken".into());
             } else if let Some(p) = &f.prereq {
@@ -500,4 +506,111 @@ fn scope_level(choice: &ChoiceState, ch: &Character) -> u8 {
         .and_then(|rest| rest.split('/').next())
         .map(|k| ch.class_level(&Key(k.to_string())))
         .unwrap_or_else(|| ch.total_level())
+}
+
+/// Filter tags for a feat: category, what it grants, what it requires,
+/// edition and source.
+pub fn feat_facets(f: &Feat, comp: &Compendium) -> Vec<(String, String)> {
+    let mut out: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut tag = |facet: &str, value: &str| {
+        out.insert((facet.to_string(), value.to_string()));
+    };
+    tag("Category", if f.category.is_none() { "Older feat (2014)" } else { f.category_label() });
+    fn walk(grants: &[Grant], tag: &mut dyn FnMut(&str, &str)) {
+        for g in grants {
+            match g {
+                Grant::Ability { ability, amount } if *amount > 0 => tag("Ability increase", ability.name()),
+                Grant::AbilityMax { .. } => {}
+                Grant::Spells(_) => tag("Grants", "Spells"),
+                Grant::Prof(p) => tag(
+                    "Grants",
+                    match p {
+                        Prof::Skill(_) => "Skill proficiency",
+                        Prof::Save(_) => "Saving throw proficiency",
+                        Prof::Armor(_) | Prof::Weapon(_) => "Armor or weapon training",
+                        Prof::Tool(_) => "Tool proficiency",
+                        Prof::Language(_) => "Languages",
+                    },
+                ),
+                Grant::Expertise(_) | Grant::ToolExpertise(_) => tag("Grants", "Expertise"),
+                Grant::Resist(_) | Grant::Immune(_) | Grant::CondImmune(_) => tag("Grants", "Resistance or immunity"),
+                Grant::Darkvision(_) | Grant::DarkvisionBonus { .. } | Grant::Sense { .. } => tag("Grants", "Senses"),
+                Grant::SpeedBonus { .. } | Grant::SpeedSet { .. } => tag("Grants", "Speed"),
+                Grant::HpPerLevel(_) | Grant::HpBonus(_) | Grant::HpPerClassLevel(_) => tag("Grants", "Hit points"),
+                Grant::AcBonus { .. } | Grant::NaturalArmor { .. } => tag("Grants", "Armor Class"),
+                Grant::AtLevel { grants, .. } => walk(grants, tag),
+                Grant::Choose(c) => options_facets(&c.options, tag),
+                _ => {}
+            }
+        }
+    }
+    fn options_facets(o: &Options, tag: &mut dyn FnMut(&str, &str)) {
+        match o {
+            Options::Abilities { from, amounts, .. } if amounts.iter().any(|a| *a > 0) => {
+                for a in from {
+                    tag("Ability increase", a.name());
+                }
+            }
+            Options::Skills(_) | Options::AnySkill => tag("Grants", "Skill proficiency"),
+            Options::SkillExpertise | Options::ExpertiseFrom(_) | Options::ToolExpertise(_) => tag("Grants", "Expertise"),
+            Options::Saves(_) => tag("Grants", "Saving throw proficiency"),
+            Options::Tools(_) | Options::AnyTool | Options::AnyArtisanTool | Options::AnyInstrument | Options::AnyGamingSet => {
+                tag("Grants", "Tool proficiency")
+            }
+            Options::Languages(_) | Options::AnyLanguage | Options::AnyStandardLanguage | Options::AnyExoticLanguage => tag("Grants", "Languages"),
+            Options::Weapons(_) | Options::WeaponMastery => tag("Grants", "Armor or weapon training"),
+            Options::Spells(_) => tag("Grants", "Spells"),
+            Options::OptionalFeatures { .. } => tag("Grants", "Maneuvers, invocations or similar"),
+            Options::Resist(_) => tag("Grants", "Resistance or immunity"),
+            Options::Bundles(bs) => {
+                for b in bs {
+                    walk(&b.grants, tag);
+                }
+            }
+            Options::Mixed(parts) => {
+                for p in parts {
+                    options_facets(p, tag);
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(&f.grants, &mut tag);
+    match &f.prereq {
+        None => tag("Prerequisite", "None"),
+        Some(p) => {
+            let mut any = false;
+            let mut req = |v: &str| {
+                any = true;
+                tag("Prerequisite", v);
+            };
+            if !p.abilities.is_empty() {
+                req("Ability score");
+            }
+            if p.level.is_some() {
+                req("Level");
+            }
+            if p.spellcasting || p.spellcasting_feature || !p.spells.is_empty() {
+                req("Spellcasting");
+            }
+            if !p.proficiencies.is_empty() {
+                req("Armor or weapon proficiency");
+            }
+            if !p.species.is_empty() {
+                req("Species");
+            }
+            if !p.feats.is_empty() || !p.features.is_empty() {
+                req("Feat or class feature");
+            }
+            if !any {
+                tag("Prerequisite", "Other");
+            }
+        }
+    }
+    if f.repeatable {
+        tag("Other", "Repeatable");
+    }
+    tag("Edition", if f.category.is_some() { "2024" } else { "Older (2014)" });
+    tag("Source", &comp.source_name(&f.source));
+    out.into_iter().collect()
 }

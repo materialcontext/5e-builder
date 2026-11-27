@@ -6,6 +6,44 @@ use crate::entries::Entries;
 use compendium::{Ability, Options};
 use leptos::prelude::*;
 use rules::OptionItem;
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Facet values in a sensible order: abilities in sheet order, "None" first,
+/// everything else alphabetically.
+fn facet_order(v: &str) -> (usize, String) {
+    let abilities = ["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"];
+    match abilities.iter().position(|a| *a == v) {
+        Some(i) => (i, String::new()),
+        None if v == "None" => (0, String::new()),
+        None => (10, v.to_string()),
+    }
+}
+
+/// Facet → values (with counts) present in a list, in display order.
+fn facets_of(opts: &[OptionItem]) -> Vec<(String, Vec<(String, usize)>)> {
+    let order = ["Category", "Ability increase", "Grants", "Prerequisite", "Other", "Edition", "Source"];
+    let mut map: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+    for o in opts {
+        for (f, v) in &o.facets {
+            *map.entry(f.clone()).or_default().entry(v.clone()).or_default() += 1;
+        }
+    }
+    let mut out: Vec<(String, Vec<(String, usize)>)> = map
+        .into_iter()
+        .map(|(f, vals)| {
+            let mut v: Vec<(String, usize)> = vals.into_iter().collect();
+            v.sort_by_key(|(x, _)| facet_order(x));
+            (f, v)
+        })
+        .collect();
+    out.sort_by_key(|(f, _)| order.iter().position(|o| o == f).unwrap_or(order.len()));
+    out
+}
+
+/// Does `o` pass the selected facet filters (any value within a facet, all facets)?
+fn passes(o: &OptionItem, sel: &BTreeMap<String, BTreeSet<String>>) -> bool {
+    sel.iter().filter(|(_, vals)| !vals.is_empty()).all(|(f, vals)| o.facets.iter().any(|(of, ov)| of == f && vals.contains(ov)))
+}
 
 /// Toggles `value` in a selection limited to `count` picks.
 pub fn toggle(mut sel: Vec<String>, value: &str, count: usize) -> Vec<String> {
@@ -32,6 +70,8 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
     let search = RwSignal::new(String::new());
     let inspect = RwSignal::new(None::<String>);
     let group = RwSignal::new(None::<String>);
+    let facet_sel = RwSignal::new(BTreeMap::<String, BTreeSet<String>>::new());
+    let only_available = RwSignal::new(false);
 
     move || {
         let Some(c) = choice.get() else { return ().into_any() };
@@ -105,7 +145,9 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
                     </div>
                 }
             });
-            let group_bar = (many && groups.len() > 1).then(|| {
+            let facets = opts.with(|o| facets_of(o));
+            let filter_menu = (!facets.is_empty()).then(|| filter_menu(facets.clone(), facet_sel, only_available, opts, &anchor));
+            let group_bar = (many && groups.len() > 1 && facets.is_empty()).then(|| {
                 view! {
                     <div class="group-bar" role="group" aria-label="Filter options">
                         <button class="tab small" class:active=move || group.get().is_none() aria-pressed=move || group.get().is_none().to_string() on:click=move |_| group.set(None)>"All"</button>
@@ -125,9 +167,13 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
                 let q = search.get().to_lowercase();
                 let g = group.get();
                 let selected = selected.clone();
+                let sel = facet_sel.get();
+                let avail = only_available.get();
                 opts.get()
                     .into_iter()
                     .filter(|o| g.is_none() || o.group == g)
+                    .filter(|o| passes(o, &sel))
+                    .filter(|o| !avail || o.disabled.is_none() || selected.contains(&o.value))
                     .filter(|o| q.is_empty() || o.label.to_lowercase().contains(&q) || o.detail.to_lowercase().contains(&q))
                     .map(|o| option_row(o, &selected, count, p2.clone(), inspect, ctx))
                     .collect_view()
@@ -140,11 +186,93 @@ pub fn ChoicePicker(path: String) -> impl IntoView {
                         on:input=move |ev| search.set(event_target_value(&ev)) />
                 })}
                 {group_bar}
+                {filter_menu}
                 <div class="options" class:scroll=many>{list}</div>
             }
             .into_any()
         };
         view! { <section class="choice" class:complete=done class:fresh=is_new id=anchor.clone() tabindex="-1" role="group" aria-labelledby=format!("{title_id} {anchor}-origin")>{header}{body}</section> }.into_any()
+    }
+}
+
+/// The filter menu for faceted lists (feats): checkbox groups per facet,
+/// "only what I can take", a live result count and a reset.
+fn filter_menu(
+    facets: Vec<(String, Vec<(String, usize)>)>,
+    sel: RwSignal<BTreeMap<String, BTreeSet<String>>>,
+    only_available: RwSignal<bool>,
+    opts: Memo<Vec<OptionItem>>,
+    anchor: &str,
+) -> impl IntoView {
+    let active = move || sel.with(|m| m.values().map(BTreeSet::len).sum::<usize>()) + usize::from(only_available.get());
+    let shown = move || {
+        let m = sel.get();
+        let avail = only_available.get();
+        opts.with(|o| (o.iter().filter(|x| passes(x, &m) && (!avail || x.disabled.is_none())).count(), o.len()))
+    };
+    let groups = facets
+        .into_iter()
+        .filter(|(_, vals)| vals.len() > 1)
+        .enumerate()
+        .map(|(gi, (facet, vals))| {
+            let f2 = facet.clone();
+            let n_values = vals.len();
+            let many_values = n_values > 10;
+            let boxes = vals
+                .into_iter()
+                .enumerate()
+                .map(|(vi, (v, n))| {
+                    let (fa, fb, va, vb) = (facet.clone(), facet.clone(), v.clone(), v.clone());
+                    let id = format!("{anchor}-f{gi}-{vi}");
+                    let for_id = id.clone();
+                    view! {
+                        <label class="facet" for=for_id>
+                            <input type="checkbox" id=id
+                                prop:checked=move || sel.with(|m| m.get(&fa).is_some_and(|s| s.contains(&va)))
+                                on:change=move |ev| {
+                                    let on = event_target_checked(&ev);
+                                    sel.update(|m| {
+                                        let set = m.entry(fb.clone()).or_default();
+                                        if on { set.insert(vb.clone()); } else { set.remove(&vb); }
+                                    });
+                                } />
+                            <span>{v.clone()}</span>
+                            <span class="facet-n">{n}</span>
+                        </label>
+                    }
+                })
+                .collect_view();
+            if many_values {
+                view! {
+                    <details class="facet-group facet-more">
+                        <summary>{format!("{f2} ({n_values})")}</summary>
+                        <fieldset class="facet-group"><legend class="visually-hidden">{f2.clone()}</legend><div class="facet-list">{boxes}</div></fieldset>
+                    </details>
+                }
+                .into_any()
+            } else {
+                view! { <fieldset class="facet-group"><legend>{f2}</legend><div class="facet-list">{boxes}</div></fieldset> }.into_any()
+            }
+        })
+        .collect_view();
+    let avail_id = format!("{anchor}-avail");
+    let avail_for = avail_id.clone();
+    view! {
+        <details class="filters">
+            <summary>
+                {icon("filter")}"Filters"
+                {move || (active() > 0).then(|| view! { <span class="badge">{active()}" active"</span> })}
+                <span class="filters-count" aria-live="polite">{move || { let (a, b) = shown(); format!("{a} of {b} shown") }}</span>
+            </summary>
+            <div class="filters-body">
+                <label class="facet wide" for=avail_for>
+                    <input type="checkbox" id=avail_id prop:checked=move || only_available.get() on:change=move |ev| only_available.set(event_target_checked(&ev)) />
+                    <span>"Only show options I can take now"</span>
+                </label>
+                {groups}
+                <button class="link-button" on:click=move |_| { sel.set(BTreeMap::new()); only_available.set(false); }>"Clear filters"</button>
+            </div>
+        </details>
     }
 }
 
@@ -158,40 +286,124 @@ fn pick_for(ch: &mut rules::Character, c: &rules::ChoiceState, _b: &rules::Build
     }
 }
 
+/// First real sentence of an option's description, for the card preview
+/// (skips section titles and "you gain the following benefits" lead-ins).
+fn preview(body: &[compendium::Entry]) -> String {
+    use compendium::Entry;
+    fn first(es: &[Entry]) -> Option<String> {
+        for e in es {
+            let found = match e {
+                Entry::P(t) => {
+                    let l = t.to_lowercase();
+                    (!t.trim_end().ends_with(':') && !l.contains("the following benefit")).then(|| t.clone())
+                }
+                // The increase is already shown as a tag; preview the feat's own benefit.
+                Entry::Section { name: Some(n), .. } if n == "Ability Score Increase" => None,
+                Entry::Section { body, .. } => first(body),
+                Entry::List(items) => first(items),
+                Entry::Table { .. } => None,
+            };
+            if found.is_some() {
+                return found;
+            }
+        }
+        None
+    }
+    let text = first(body).unwrap_or_default();
+    let end = text.find(". ").map(|i| i + 1).unwrap_or(text.len());
+    let s = &text[..end];
+    if s.chars().count() > 160 {
+        let cut: String = s.chars().take(157).collect();
+        format!("{}…", cut.rsplit_once(' ').map(|(a, _)| a).unwrap_or(&cut))
+    } else {
+        s.to_string()
+    }
+}
+
+/// One option: a round select control on the left (the only thing that
+/// selects), and a card that expands to the full description when clicked.
+/// Options without a description have nothing to expand; there the card is
+/// simply the select control's label.
 fn option_row(o: OptionItem, selected: &[String], count: usize, path: String, inspect: RwSignal<Option<String>>, ctx: EditorCtx) -> impl IntoView {
     let is_sel = selected.contains(&o.value);
     let full = selected.len() >= count && count > 1;
     let blocked = o.disabled.is_some() && !is_sel;
     let value = o.value.clone();
     let sel = selected.to_vec();
-    let on_pick = move |_| {
+    let pick = move || {
         if blocked {
             return;
         }
         let next = toggle(sel.clone(), &value, count);
         ctx.edit(|ch| ch.set_choice(&path, next));
     };
+    let pick2 = pick.clone();
     let has_body = !o.body.is_empty();
-    let v2 = o.value.clone();
-    let v2b = o.value.clone();
-    let v3 = o.value.clone();
+    let body_id = format!("opt-{}", o.value.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect::<String>());
+    let (v1, v2, v3) = (o.value.clone(), o.value.clone(), o.value.clone());
     let body = o.body.clone();
-    view! {
-        <div class="option" class:selected=is_sel class:disabled=blocked class:dim=full && !is_sel>
-            <button class="option-main" on:click=on_pick disabled=blocked aria-pressed=is_sel.to_string()
-                aria-disabled=(full && !is_sel).then_some("true") title=(full && !is_sel).then_some("Limit reached — remove a selection first")>
-                <span class="check" aria-hidden="true">{is_sel.then(|| icon("check"))}</span>
-                <span class="option-label">{o.label.clone()}</span>
-                <span class="option-detail">{o.detail.clone()}</span>
-                {o.warning.clone().map(|w| view! { <span class="badge warn">{w}</span> })}
-                {o.disabled.clone().filter(|_| !is_sel).map(|d| view! { <span class="badge">{d}</span> })}
-            </button>
-            {has_body.then(|| view! {
-                <button class="info" aria-label=format!("Details: {}", o.label) aria-expanded=move || (inspect.get().as_deref() == Some(v2b.as_str())).to_string()
-                    on:click=move |_| inspect.update(|i| *i = if i.as_deref() == Some(&v2) { None } else { Some(v2.clone()) })>{icon("info")}</button>
+    let facet = |name: &str| -> Vec<String> { o.facets.iter().filter(|(f, _)| f == name).map(|(_, v)| v.clone()).collect() };
+    let category = facet("Category").into_iter().next();
+    let abilities = facet("Ability increase");
+    let grants = facet("Grants");
+    let summary = if has_body && !o.facets.is_empty() { preview(&o.body) } else { String::new() };
+    let label = o.label.clone();
+    let action = if is_sel { format!("Remove {label}") } else { format!("Select {label}") };
+    let limit = (full && !is_sel).then_some("Limit reached — remove a selection first");
+
+    let content = view! {
+        <span class="option-top">
+            <span class="option-label">{o.label.clone()}</span>
+            {category.map(|c| view! { <span class="tag cat">{c}</span> })}
+            {(!abilities.is_empty()).then(|| {
+                let mut ab = abilities.clone();
+                ab.sort_by_key(|a| facet_order(a));
+                let text = if ab.len() == 6 { "+ any ability".to_string() } else {
+                    format!("+ {}", ab.iter().map(|a| a.chars().take(3).collect::<String>().to_uppercase()).collect::<Vec<_>>().join(" / "))
+                };
+                view! { <span class="tag asi" title="Ability score increase">{text}</span> }
             })}
-            {move || (inspect.get().as_deref() == Some(v3.as_str())).then(|| view! {
-                <div class="option-body"><Entries entries=body.clone() /></div>
+        </span>
+        <span class="option-detail">{o.detail.clone()}</span>
+        {(!grants.is_empty()).then(|| view! { <span class="tags">{grants.iter().map(|g| view! { <span class="tag">{g.clone()}</span> }).collect_view()}</span> })}
+        {(!summary.is_empty()).then(|| view! { <span class="option-summary">{summary.clone()}</span> })}
+        {o.warning.clone().map(|w| view! { <span class="badge warn">{w}</span> })}
+        {o.disabled.clone().filter(|_| !is_sel).map(|d| {
+            // The prerequisite is already on the detail line; don't repeat it.
+            let shown = if d.starts_with("Requires") { "Prerequisite not met".to_string() } else { d };
+            view! { <span class="badge">{shown}</span> }
+        })}
+    };
+    let main = if has_body {
+        let open = move || inspect.get().as_deref() == Some(v1.as_str());
+        view! {
+            <button class="option-main" aria-expanded=move || open().to_string() aria-controls=body_id.clone()
+                on:click=move |_| inspect.update(|i| *i = if i.as_deref() == Some(&v2) { None } else { Some(v2.clone()) })>
+                {content}
+                <span class="expand" aria-hidden="true">{icon("next")}</span>
+            </button>
+        }
+        .into_any()
+    } else {
+        // Nothing to expand: the card is the select control's label (mouse only;
+        // keyboard and screen readers use the select button itself).
+        view! { <div class="option-main plain" on:click=move |_| pick2()>{content}</div> }.into_any()
+    };
+    view! {
+        <div class="option" class:selected=is_sel class:disabled=blocked class:dim=full && !is_sel class:open=move || inspect.get().as_deref() == Some(v3.as_str())>
+            <button class="select-dot" aria-pressed=is_sel.to_string() aria-label=action disabled=blocked
+                aria-disabled=limit.map(|_| "true") title=limit on:click=move |_| pick()>
+                <span class="dot" aria-hidden="true">{is_sel.then(|| icon("check"))}</span>
+            </button>
+            {main}
+            {has_body.then(|| {
+                let v = o.value.clone();
+                let id = format!("opt-{}", o.value.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect::<String>());
+                view! {
+                    <div class="option-body" id=id hidden=move || inspect.get().as_deref() != Some(v.as_str())>
+                        <Entries entries=body.clone() />
+                    </div>
+                }
             })}
         </div>
     }

@@ -818,3 +818,45 @@ fn sheet_shows_only_chosen_options() {
     }).sum();
     assert_eq!(rows, 1, "{:?}", anc.feature.body);
 }
+
+#[test]
+fn every_feat_with_an_increase_says_so() {
+    let Some(comp) = comp() else { return };
+    fn raises(grants: &[compendium::Grant]) -> bool {
+        grants.iter().any(|g| match g {
+            compendium::Grant::Ability { amount, .. } => *amount > 0,
+            compendium::Grant::Choose(c) => match &c.options {
+                Options::Abilities { amounts, .. } => amounts.iter().any(|a| *a > 0),
+                Options::Bundles(bs) => bs.iter().any(|b| raises(&b.grants)),
+                _ => false,
+            },
+            compendium::Grant::AtLevel { grants, .. } => raises(grants),
+            _ => false,
+        })
+    }
+    let silent: Vec<&str> = comp
+        .feats
+        .iter()
+        .filter(|f| f.name != "Ability Score Improvement" && raises(&f.grants))
+        .filter(|f| {
+            let t = compendium::Entry::plain(&f.body).to_lowercase();
+            !(t.contains("ability score increase") || t.contains("score by 1") || t.contains("score by 2"))
+        })
+        .map(|f| f.key.0.as_str())
+        .collect();
+    assert!(silent.is_empty(), "feats whose text omits their ability increase: {silent:?}");
+}
+
+#[test]
+fn feat_filter_tags() {
+    let Some(comp) = comp() else { return };
+    let f = |k: &str| crate::options::feat_facets(comp.feats.get(&Key(k.into())).unwrap(), comp);
+    let sentinel = f("sentinel|xphb");
+    assert!(sentinel.contains(&("Ability increase".into(), "Strength".into())));
+    assert!(sentinel.contains(&("Ability increase".into(), "Dexterity".into())));
+    assert!(sentinel.contains(&("Category".into(), "General".into())));
+    let mi = f("magic initiate|xphb");
+    assert!(mi.contains(&("Grants".into(), "Spells".into())), "{mi:?}");
+    assert!(mi.contains(&("Prerequisite".into(), "None".into())), "{mi:?}");
+    assert!(f("mobile|phb").contains(&("Edition".into(), "Older (2014)".into())));
+}
