@@ -618,12 +618,27 @@ impl Export<'_> {
                 "requirements": self.requirements(f),
                 "source": { "book": "", "custom": f.origin, "rules": "2024", "page": "" },
                 "activities": {},
-                "uses": { "max": "", "spent": 0, "recovery": [] },
+                "uses": self.feature_uses(name),
                 "advancement": {},
                 "properties": [],
             });
             self.push(&format!("feature-{i}-{name}"), name, "feat", system);
         }
+    }
+
+    /// Uses and recovery, from the sheet's limited-use list ("1 SR · all LR":
+    /// one back on a Short Rest, all on a Long Rest).
+    fn feature_uses(&self, name: &str) -> Value {
+        let Some(u) = self.s.limited.iter().find(|u| u.name == name) else {
+            return json!({ "max": "", "spent": 0, "recovery": [] });
+        };
+        let recovery = match u.recharge.as_str() {
+            "SR" => json!([{ "period": "sr", "type": "recoverAll" }]),
+            "1 SR · all LR" => json!([{ "period": "lr", "type": "recoverAll" }, { "period": "sr", "type": "formula", "formula": "1" }]),
+            "Dawn" => json!([{ "period": "dawn", "type": "recoverAll" }]),
+            _ => json!([{ "period": "lr", "type": "recoverAll" }]),
+        };
+        json!({ "max": u.uses.to_string(), "spent": 0, "recovery": recovery })
     }
 
     /// What Foundry shows under the name: the class level for features, the

@@ -518,6 +518,7 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .rp-art .col { font-size: 7px; fill: #6d6e71; }
 .rp-art .faint { font-size: 7.5px; fill: #858384; }
 .rp-art .v { font-weight: 500; fill: var(--rp-val); }
+.rp-art .note { font-style: italic; fill: #4a4747; }
 .rp-art .title { font-weight: 700; letter-spacing: .08em; fill: var(--rp-ink); }
 .rp-box {
   position: absolute; overflow: hidden; color: var(--rp-val); box-sizing: border-box; padding: 0 calc(.5 * var(--u));

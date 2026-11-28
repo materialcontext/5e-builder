@@ -1076,10 +1076,10 @@ fn damage_cantrips_are_listed_with_attacks() {
     let int = b.modifier(Ability::Int);
     let fire = s.attacks.iter().find(|a| a.name == "Fire Bolt").expect("Fire Bolt on the attack list");
     assert_eq!(fire.to_hit(), signed(3 + int), "proficiency 3 at level 5 + Int");
-    assert_eq!(fire.damage, "2d10 fire", "scales at level 5");
+    assert_eq!(fire.damage(), "2d10 Fire", "scales at level 5");
     let acid = s.attacks.iter().find(|a| a.name == "Acid Splash").expect("Acid Splash on the attack list");
     assert_eq!(acid.to_hit(), format!("DC {} DEX", 8 + 3 + int));
-    assert_eq!(acid.damage, "2d6 acid");
+    assert_eq!(acid.damage(), "2d6 Acid");
     assert!(!s.attacks.iter().any(|a| a.name == "Mage Hand" || a.name == "Light"), "no damage, no row");
 }
 
@@ -1227,4 +1227,92 @@ fn wizard_subclass_known_spells_go_in_the_spellbook() {
     assert_eq!(always, ["counterspell", "dispel magic"], "{savant:?}");
     // Abjuration Savant: free spellbook additions, not always prepared.
     assert!(savant.iter().filter(|k| k.mode == crate::build::SpellMode::Spellbook).count() >= 4, "{savant:?}");
+}
+
+fn leveled(class: &str, sub: Option<&str>, level: u8) -> Option<(Character, Sheet)> {
+    let comp = comp()?;
+    let mut ch = hero(class, "soldier|xphb", "human|xphb");
+    ch.abilities.scores = [15, 14, 13, 8, 12, 10];
+    for _ in 1..level {
+        ch.level_up(Key(class.into()));
+    }
+    if let Some(sub) = sub {
+        let b = build(&ch, comp);
+        let c = b.choices.iter().find(|c| matches!(c.options, Options::Subclass { .. })).expect("subclass choice");
+        ch.set_choice(&c.path.clone(), vec![sub.into()]);
+    }
+    autofill(&mut ch, comp);
+    apply_starting_equipment(&mut ch, comp);
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    Some((ch, s))
+}
+
+fn uses<'a>(s: &'a Sheet, name: &str) -> &'a crate::play::LimitedUse {
+    s.limited.iter().find(|u| u.name == name).unwrap_or_else(|| panic!("{name} in {:?}", s.limited.iter().map(|u| &u.name).collect::<Vec<_>>()))
+}
+
+#[test]
+fn limited_uses_follow_the_rules() {
+    // Counts that grow with level, from the class table and feature text.
+    let Some((_, f2)) = leveled("fighter|xphb", None, 2) else { return };
+    assert_eq!((uses(&f2, "Second Wind").uses, uses(&f2, "Second Wind").recharge.as_str()), (2, "1 SR · all LR"));
+    assert_eq!(uses(&f2, "Action Surge").uses, 1);
+    let (_, f20) = leveled("fighter|xphb", None, 20).unwrap();
+    assert_eq!(uses(&f20, "Second Wind").uses, 4);
+    assert_eq!((uses(&f20, "Action Surge").uses, uses(&f20, "Action Surge").recharge.as_str()), (2, "SR"));
+    assert_eq!((uses(&f20, "Indomitable").uses, uses(&f20, "Indomitable").recharge.as_str()), (3, "LR"));
+    // Pools and "one on a Short Rest, all on a Long Rest".
+    let (_, p) = leveled("paladin|xphb", None, 20).unwrap();
+    let loh = uses(&p, "Lay on Hands");
+    assert_eq!((loh.uses, loh.unit.as_str(), loh.ticks()), (100, "HP", false));
+    assert_eq!(uses(&p, "Channel Divinity").recharge, "1 SR · all LR");
+    let (_, c) = leveled("cleric|xphb", None, 6).unwrap();
+    assert_eq!((uses(&c, "Channel Divinity").uses, uses(&c, "Channel Divinity").recharge.as_str()), (3, "1 SR · all LR"));
+    let (_, m) = leveled("monk|xphb", None, 5).unwrap();
+    assert_eq!((uses(&m, "Focus Points").uses, uses(&m, "Focus Points").unit.as_str(), uses(&m, "Focus Points").recharge.as_str()), (5, "points", "SR"));
+    // 2014 wording ("at 17th level").
+    let (_, f10) = leveled("fighter|phb", None, 10).unwrap();
+    assert_eq!(uses(&f10, "Action Surge").uses, 1);
+    assert_eq!(uses(&f10, "Indomitable").uses, 1);
+}
+
+#[test]
+fn every_class_has_sane_table_aids() {
+    let Some(comp) = comp() else { return };
+    for class in comp.classes.iter().filter(|c| c.source == "XPHB").map(|c| c.key.0.clone()) {
+        for level in [1u8, 5, 20] {
+            let (_, s) = leveled(&class, None, level).unwrap();
+            for u in &s.limited {
+                assert!(u.uses > 0 && !u.recharge.is_empty(), "{class} {level}: {u:?}");
+            }
+            assert!(s.actions.reaction.iter().any(|r| r == "Opportunity Attack"), "{class} {level}");
+            for a in &s.attacks {
+                assert!(!a.range.is_empty() && !a.dice.is_empty(), "{class} {level}: {a:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn detailed_weapon_rows() {
+    let Some((_, s)) = leveled("fighter|xphb", None, 5) else { return };
+    let unarmed = s.attacks.iter().find(|a| a.name == "Unarmed Strike").unwrap();
+    assert!(unarmed.notes.contains("Grapple or Shove"), "{unarmed:?}");
+    for a in s.attacks.iter().filter(|a| a.name != "Unarmed Strike") {
+        assert!(a.proficient, "fighters are proficient with every weapon: {a:?}");
+        assert!(!a.damage_type.is_empty(), "{a:?}");
+    }
+    // A weapon chosen for Weapon Mastery shows what its mastery does.
+    let comp = comp().unwrap();
+    let (mut ch, _) = leveled("fighter|xphb", None, 5).unwrap();
+    let b = build(&ch, comp);
+    let c = b.choices.iter().find(|c| c.path.ends_with("/mastery")).expect("mastery choice");
+    let mut picks = vec!["greatsword|xphb".to_string()];
+    picks.extend(c.selected.iter().filter(|v| !v.starts_with("greatsword")).take(c.count as usize - 1).cloned());
+    ch.set_choice(&c.path.clone(), picks);
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    let gs = s.attacks.iter().find(|a| a.name == "Greatsword").expect("starting greatsword");
+    assert!(gs.notes.contains("Graze: on a miss"), "{gs:?}");
 }

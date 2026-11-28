@@ -36,7 +36,16 @@ pub struct Attack {
     pub bonus: i32,
     /// For saving-throw spells: the save DC and ability (shown instead of a bonus).
     pub save: Option<(i32, Ability)>,
-    pub damage: String,
+    /// Ability the attack or save DC uses (STR, DEX, or a spellcasting ability).
+    pub ability: Ability,
+    pub proficient: bool,
+    /// "5 ft.", "Reach 10 ft.", "80/320 ft.", "120 ft.", "Touch".
+    pub range: String,
+    /// Dice and modifier: "1d8+3", "4d10".
+    pub dice: String,
+    /// "Slashing", "Fire or Cold".
+    pub damage_type: String,
+    /// The line under the attack: properties, versatile damage, mastery, spell notes.
     pub notes: String,
 }
 
@@ -126,6 +135,10 @@ pub struct Sheet {
     pub pact_slots: Option<(u8, u8)>,
     pub spells: Vec<SpellLine>,
     pub features: Vec<FeatureEntry>,
+    /// Features and free spells with limited uses, for tracking at the table.
+    pub limited: Vec<crate::play::LimitedUse>,
+    /// What the character can do with an action, bonus action and reaction.
+    pub actions: crate::play::Actions,
     pub inventory: Vec<InventoryLine>,
     pub carried_weight: f32,
     pub carry_capacity: i32,
@@ -441,6 +454,9 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         FeatureKind::Other => 4,
     });
 
+    let limited = crate::play::limited_uses(build, comp, &features, pb);
+    let actions = crate::play::actions(ch, build, comp, &features);
+
     let classes: Vec<ClassSummary> = build
         .classes
         .iter()
@@ -537,6 +553,8 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         pact_slots: pact,
         spells,
         features,
+        limited,
+        actions,
         inventory,
         carried_weight,
         carry_capacity: build.score(Ability::Str) * 15,
@@ -582,45 +600,84 @@ fn attacks(ch: &Character, build: &Build, comp: &Compendium, pb: i32, profs: &[S
     for inv in &ch.inventory {
         let Some(it) = inv.item.as_ref().and_then(|k| comp.items.get(k)) else { continue };
         let Some(w) = &it.weapon else { continue };
-        let finesse = w.properties.iter().any(|p| p == "finesse");
-        let ability = if w.ranged {
-            Ability::Dex
-        } else if finesse && m(Ability::Dex) > m(Ability::Str) {
-            Ability::Dex
-        } else {
-            Ability::Str
-        };
+        let has = |p: &str| w.properties.iter().any(|x| x.split('|').next() == Some(p));
+        let ability = if w.ranged || (has("finesse") && m(Ability::Dex) > m(Ability::Str)) { Ability::Dex } else { Ability::Str };
         let prof = weapon_proficient(it, w, profs);
         let bonus = m(ability) + if prof { pb } else { 0 } + it.bonus as i32;
         let dmg_mod = m(ability) + it.bonus as i32;
         let fmt = |dice: &str| if dmg_mod == 0 { dice.to_string() } else { format!("{dice}{}", signed(dmg_mod)) };
-        let mut damage = format!("{} {}", fmt(&w.damage), w.damage_type);
-        if let Some(v) = &w.versatile {
-            damage.push_str(&format!(" ({} two-handed)", fmt(v)));
+        let range = match (&w.range, w.ranged) {
+            (Some(r), true) => format!("{r} ft."),
+            (Some(r), false) => format!("{} · {r}", if has("reach") { "10 ft." } else { "5 ft." }),
+            (None, _) => if has("reach") { "10 ft.".into() } else { "5 ft.".into() },
+        };
+        // Properties a player needs at the table (range and reach have their own column).
+        let mut notes: Vec<String> = w
+            .properties
+            .iter()
+            .map(|p| p.split('|').next().unwrap_or(p).to_string())
+            .filter(|p| !matches!(p.as_str(), "versatile" | "reach" | "thrown" | "ammunition"))
+            .map(|p| title_case(&p))
+            .collect();
+        if has("thrown") {
+            notes.insert(0, "Thrown".into());
         }
-        let mut notes: Vec<String> = w.properties.iter().filter(|p| p.as_str() != "versatile").cloned().collect();
-        if let Some(r) = &w.range {
-            notes.push(format!("range {r}"));
+        if has("ammunition") {
+            notes.insert(0, "Ammunition".into());
+        }
+        if let Some(v) = &w.versatile {
+            notes.push(format!("Versatile ({})", fmt(v)));
         }
         if let Some(ms) = &w.mastery {
             if masteries.contains(&it.name.to_lowercase()) {
-                notes.push(format!("mastery: {ms}"));
+                let dc = 8 + m(ability) + pb;
+                notes.push(format!("{ms}: {}", mastery_effect(ms, dc)));
             }
         }
         if !prof {
-            notes.push("not proficient".into());
+            notes.push("Not proficient".into());
         }
-        out.push(Attack { name: inv.name.clone(), bonus, save: None, damage, notes: notes.join(", ") });
+        out.push(Attack {
+            name: inv.name.clone(),
+            bonus,
+            save: None,
+            ability,
+            proficient: prof,
+            range,
+            dice: fmt(&w.damage),
+            damage_type: title_case(&w.damage_type),
+            notes: notes.join(", "),
+        });
     }
+    let str_mod = m(Ability::Str);
     out.push(Attack {
         name: "Unarmed Strike".into(),
-        bonus: m(Ability::Str) + pb,
+        bonus: str_mod + pb,
         save: None,
-        damage: format!("{} bludgeoning", (1 + m(Ability::Str)).max(1)),
-        notes: String::new(),
+        ability: Ability::Str,
+        proficient: true,
+        range: "5 ft.".into(),
+        dice: (1 + str_mod).max(1).to_string(),
+        damage_type: "Bludgeoning".into(),
+        notes: format!("Or Grapple or Shove instead: Str or Dex save, DC {}", 8 + str_mod + pb),
     });
     out.extend(damage_cantrips(ch, build, comp, pb));
     out
+}
+
+/// What a weapon mastery does, short enough for one line.
+fn mastery_effect(mastery: &str, dc: i32) -> String {
+    match mastery.to_lowercase().as_str() {
+        "cleave" => "on a hit, attack a 2nd creature within 5 ft. (once per turn, no ability mod to damage)".into(),
+        "graze" => "on a miss, deal damage equal to your ability modifier".into(),
+        "nick" => "the extra Light-weapon attack is part of the Attack action".into(),
+        "push" => "push a Large or smaller target up to 10 ft. away".into(),
+        "sap" => "target has Disadvantage on its next attack roll".into(),
+        "slow" => "target's Speed is reduced by 10 ft. until your next turn".into(),
+        "topple" => format!("target makes a Con save (DC {dc}) or falls Prone"),
+        "vex" => "Advantage on your next attack roll against the target".into(),
+        _ => String::new(),
+    }
 }
 
 impl Attack {
@@ -630,6 +687,11 @@ impl Attack {
             Some((dc, a)) => format!("DC {dc} {}", a.abbr()),
             None => signed(self.bonus),
         }
+    }
+
+    /// Dice and type together: "1d8+3 Slashing".
+    pub fn damage(&self) -> String {
+        format!("{} {}", self.dice, self.damage_type).trim().to_string()
     }
 }
 
@@ -650,16 +712,17 @@ fn damage_cantrips(ch: &Character, build: &Build, comp: &Compendium, pb: i32) ->
             .or(first_casting)
             .unwrap_or(Ability::Int);
         let m = build.modifier(ability);
-        let at = |steps: &[(u8, String)]| steps.iter().filter(|(l, _)| *l <= level).last().map(|(_, d)| d.clone());
+        let at = |steps: &[(u8, String)]| steps.iter().rev().find(|(l, _)| *l <= level).map(|(_, d)| d.clone());
         let dice: Vec<String> = sp.scaling.iter().filter_map(|(_, steps)| at(steps)).collect();
-        let types = sp.damage.join(" or ");
-        let mut notes = vec![sp.range.clone()];
-        let mut damage = match dice.as_slice() {
-            [] => format!("{} {types}", sp.base_damage.clone().unwrap_or_default()),
-            [one] => format!("{one} {types}"),
+        let types = sp.damage.iter().map(|t| title_case(t)).collect::<Vec<_>>().join(" or ");
+        let mut notes = vec![format!("Cantrip, {}", sp.components.split(" (").next().unwrap_or(""))];
+        let mut dice_text = match dice.as_slice() {
+            [] => sp.base_damage.clone().unwrap_or_default(),
+            [one] => one.clone(),
+            // Toll the Dead: the second die applies to a wounded target.
             [first, rest @ ..] => {
-                // Toll the Dead: the second line applies to a wounded target.
-                format!("{first} {types} ({} if already damaged)", rest.join(", "))
+                notes.push(format!("{} if the target is already damaged", rest.join(", ")));
+                first.clone()
             }
         };
         if sp.name == "Eldritch Blast" {
@@ -670,7 +733,7 @@ fn damage_cantrips(ch: &Character, build: &Build, comp: &Compendium, pb: i32) ->
                 _ => 4,
             };
             if build.has_feature_named("Agonizing Blast") && m != 0 {
-                damage = format!("{}{} force", sp.base_damage.clone().unwrap_or_else(|| "1d10".into()), signed(m));
+                dice_text = format!("{}{}", sp.base_damage.clone().unwrap_or_else(|| "1d10".into()), signed(m));
             }
             notes.push(format!("{beams} beam{} (separate attacks)", if beams > 1 { "s" } else { "" }));
         }
@@ -678,7 +741,20 @@ fn damage_cantrips(ch: &Character, build: &Build, comp: &Compendium, pb: i32) ->
         if let Some((_, a)) = save {
             notes.push(format!("{} save", a.name()));
         }
-        out.push(Attack { name: sp.name.clone(), bonus: pb + m, save, damage: damage.trim().to_string(), notes: notes.join(", ") });
+        if sp.concentration {
+            notes.push("Concentration".into());
+        }
+        out.push(Attack {
+            name: sp.name.clone(),
+            bonus: pb + m,
+            save,
+            ability,
+            proficient: true,
+            range: sp.range.clone(),
+            dice: dice_text.trim().to_string(),
+            damage_type: types,
+            notes: notes.join(", "),
+        });
     }
     out
 }

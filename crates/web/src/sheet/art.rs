@@ -195,6 +195,20 @@ impl Svg {
         );
     }
 
+    /// A secondary line under a value (grey italic): properties, notes.
+    pub fn note(&mut self, x: f32, y: f32, w: f32, size: f32, s: &str) {
+        if s.is_empty() {
+            return;
+        }
+        let sz = fit(s, size, w, size.min(4.6));
+        let squeeze = if text_width(s, sz) > w * 1.02 {
+            format!(r#" textLength="{w}" lengthAdjust="spacingAndGlyphs""#)
+        } else {
+            String::new()
+        };
+        let _ = write!(self.0, r#"<text x="{x}" y="{y}" class="note"{squeeze} style="font-size:{sz:.2}px">{}</text>"#, esc(s));
+    }
+
     /// The sheet's four-pointed concave "diamond" marker, centred on (cx, cy)
     /// with half-size `a`. Filled black when `on`.
     pub fn diamond(&mut self, cx: f32, cy: f32, a: f32, sw: f32, on: bool) {

@@ -11,6 +11,7 @@ pub mod browse;
 pub mod explain;
 pub mod foundry;
 pub mod options;
+pub mod play;
 pub mod sheet;
 pub mod spellcasting;
 pub mod selections;

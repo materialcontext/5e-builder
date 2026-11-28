@@ -76,7 +76,7 @@ impl<T: Record> Table<T> {
 /// writing data the app relies on, so the app can tell a stale file (built
 /// by an older importer, which still loads because new fields default to
 /// empty) from a current one.
-pub const SCHEMA: u32 = 2;
+pub const SCHEMA: u32 = 3;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Compendium {

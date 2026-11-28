@@ -223,6 +223,23 @@ pub enum ProgressionKind {
     OptionalFeatures(Vec<String>),
 }
 
+/// One column of a class's (or subclass's) level table, e.g. "Rages" or
+/// "Focus Points": the value at each level, as printed ("3", "+2", "1d8").
+/// Spell slot and spells-known columns are not kept (spellcasting has those).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TableColumn {
+    pub label: String,
+    /// Index 0 is level 1.
+    pub values: Vec<String>,
+}
+
+impl TableColumn {
+    /// The value at `level` (1-based), if the column has one.
+    pub fn at(&self, level: u8) -> Option<&str> {
+        self.values.get(level.max(1) as usize - 1).map(String::as_str).filter(|v| !v.is_empty() && *v != "—" && *v != "-")
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Progression {
     pub name: String,
@@ -259,6 +276,9 @@ pub struct Class {
     pub progressions: Vec<Progression>,
     /// Weapon masteries known at class level `i + 1`.
     pub weapon_mastery: Vec<u8>,
+    /// Resource columns of the class table (Rages, Channel Divinity, ...).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub table: Vec<TableColumn>,
     pub grants: Vec<Grant>,
     /// Other classes whose subclasses this class may also take.
     #[serde(default)]
@@ -285,6 +305,9 @@ pub struct Subclass {
     pub spellcasting: Spellcasting,
     pub features: Vec<ClassFeature>,
     pub progressions: Vec<Progression>,
+    /// Resource columns of the subclass table (Psionic Energy Dice, ...).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub table: Vec<TableColumn>,
     pub grants: Vec<Grant>,
 }
 

@@ -10,6 +10,7 @@ A D&D 5e character builder, manager and printable character sheet, written in Ru
 - **Custom step**: before Details, add anything the rules as written don't allow (house rules, DM rewards, homebrew): ability adjustments, proficiencies, languages, any feat or spell, your own features, bonuses to HP, AC or speed. It's applied to every number and printed on the sheet.
 - **Every choice is tracked**: skills, tools, languages, ability score increases, feats and their sub-choices, fighting styles, invocations, weapon masteries, expertise, subclasses, spells, starting equipment. The wizard shows what is still missing on each step.
 - **Levels 1–20 and multiclassing**, with average or rolled hit points.
+- **Page one for the table**: alongside the official layout, a Limited Use tracker (every feature with uses: tick boxes or a pool, and when it recharges, e.g. Wild Shape "1 SR · all LR", Lay on Hands "/ 100 HP"), an Actions box (what to do with an action, bonus action and reaction), and a detailed Weapons & Damage Cantrips table (ability, proficiency, range, attack or save DC, damage, type, and a line with properties and what your weapon mastery does). Uses come from the class tables and from each feature's own wording, at your level.
 - **Printable sheet**: a faithful replica of the official two-page 2024 character sheet layout, filled in, plus optional pages with full feature and spell text and a continuation page for anything that doesn't fit. Letter or A4 (on A4 the bottom boxes grow so the margins stay even); use the browser's *Print → Save as PDF*.
 - **Character manager**: characters live in the browser (localStorage); duplicate, delete, and import/export JSON.
 - **Foundry VTT export**: "Export for Foundry VTT" (character menu, Review step, sheet toolbar) saves an actor file for the D&D 5e system. See [Foundry VTT](#foundry-vtt).
@@ -99,6 +100,10 @@ feature text was cut down to the selections (and any menus left uncovered).
 `cargo run -p rules --example sample_characters -- crates/web/public/compendium.json`
 prints a few fully built characters (multiclass caster, level 20 fighter and
 wizard, barbarian/warlock, monk, legacy ranger) in the app's storage format, for checking the printed sheet.
+
+`cargo run -p rules --example play_audit -- crates/web/public/compendium.json 20 xphb`
+lists, for every class and subclass at a level, the limited uses and the
+action / bonus action / reaction lists page one will show.
 
 `cargo run -p rules --example foundry_export -- crates/web/public/compendium.json chars.json out/`
 writes the Foundry actor for each character in a storage-format file.

@@ -638,6 +638,48 @@ fn feature_record(f: &Obj, level: u8, subclass_slot: bool, ctx: &FeatureCtx, pat
     ClassFeature { body: text::entries(&entries, ctx.refs), name, level, grants, subclass_slot, optional }
 }
 
+/// Resource columns of a class or subclass table (`classTableGroups`).
+/// Spell-progression groups and spell columns (slot levels, cantrips,
+/// prepared or known spells) are skipped: spellcasting covers those.
+fn table_columns(groups: Option<&Value>) -> Vec<TableColumn> {
+    let mut out = Vec::new();
+    for g in groups.and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_object) {
+        let Some(rows) = g.get("rows").and_then(Value::as_array) else { continue };
+        let labels: Vec<String> = g.get("colLabels").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(strip).collect();
+        for (i, label) in labels.iter().enumerate() {
+            let l = label.to_lowercase();
+            if l.chars().next().is_some_and(|c| c.is_ascii_digit()) || ["spell", "cantrip", "slot", "invocation"].iter().any(|w| l.contains(w)) {
+                continue;
+            }
+            let values = rows.iter().map(|r| r.get(i).map(table_cell).unwrap_or_default()).collect();
+            out.push(TableColumn { label: label.clone(), values });
+        }
+    }
+    out
+}
+
+/// A table cell as printed: 3, "+2" (bonus), "1d8" (dice), "+10 ft." (speed).
+fn table_cell(v: &Value) -> String {
+    match v {
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => strip(s),
+        Value::Object(o) => match o.get("type").and_then(Value::as_str) {
+            Some("bonus") => format!("+{}", o.get("value").and_then(Value::as_i64).unwrap_or(0)),
+            Some("bonusSpeed") => format!("+{} ft.", o.get("value").and_then(Value::as_i64).unwrap_or(0)),
+            Some("dice") => o
+                .get("toRoll")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|d| format!("{}d{}", d.get("number").and_then(Value::as_u64).unwrap_or(1), d.get("faces").and_then(Value::as_u64).unwrap_or(6)))
+                .collect::<Vec<_>>()
+                .join(" + "),
+            _ => o.get("value").map(|x| x.to_string()).unwrap_or_default(),
+        },
+        _ => String::new(),
+    }
+}
+
 fn feature_uid_level(uid: &str, subclass: bool) -> u8 {
     let idx = if subclass { 5 } else { 3 };
     uid.split('|').nth(idx).and_then(|x| x.trim().parse().ok()).unwrap_or(1)
@@ -841,6 +883,7 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             subclass_title: c.get("subclassTitle").and_then(Value::as_str).unwrap_or("Subclass").to_string(),
             progressions: progressions(c),
             weapon_mastery: totals(c.get("itemMasteriesProgression")),
+            table: table_columns(c.get("classTableGroups")),
             grants: class_grants,
             subclass_from: c
                 .get("includeSubclassesFrom")
@@ -916,6 +959,7 @@ pub fn classes(data: &ClassData) -> (Vec<Class>, Vec<Subclass>) {
             spellcasting: spellcasting(sc, list),
             features,
             progressions: progressions(sc),
+            table: table_columns(sc.get("subclassTableGroups")),
             grants: common_grants(sc, "subclass"),
             class: class_key,
             name,

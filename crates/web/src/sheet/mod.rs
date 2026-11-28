@@ -246,13 +246,13 @@ fn continuation_page(s: &Sheet, of: Overflow) -> impl IntoView {
         let rows = of
             .attacks
             .iter()
-            .map(|a| view! { <tr><td class="strong">{a.name.clone()}</td><td class="c">{a.to_hit()}</td><td>{a.damage.clone()}</td><td>{a.notes.clone()}</td></tr> })
+            .map(|a| view! { <tr><td class="strong">{a.name.clone()}</td><td class="c">{a.ability.abbr()}{if a.proficient { "" } else { " (not proficient)" }}</td><td>{a.range.clone()}</td><td class="c">{a.to_hit()}</td><td>{a.damage()}</td><td>{a.notes.clone()}</td></tr> })
             .collect_view();
         view! {
             <section class="rp-group">
                 <h3 class="rp-group-title">"Weapons & Damage Cantrips (continued)"</h3>
                 <table class="rp-table">
-                    <thead><tr><th>"Name"</th><th class="c">"Atk Bonus / DC"</th><th>"Damage & Type"</th><th>"Notes"</th></tr></thead>
+                    <thead><tr><th>"Name"</th><th class="c">"Abil."</th><th>"Range"</th><th class="c">"Atk / DC"</th><th>"Damage & Type"</th><th>"Notes"</th></tr></thead>
                     <tbody>{rows}</tbody>
                 </table>
             </section>
