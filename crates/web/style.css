@@ -588,10 +588,14 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
   .sheet .page { box-shadow: none; margin: 0; break-after: page; }
   .sheet .page:last-child { break-after: auto; }
   /* Text pages may run over; let them grow onto further sheets. */
-  /* They print on the margined "text" page, so they take its printable
-     width, not the paper's: a paper-wide box would overflow, and browsers
-     then clip it (Firefox) or shrink every page to fit (Chrome). */
-  .sheet .rp-text-page { overflow: visible; page: text; display: block; width: auto; height: auto; min-height: 0; background: none; }
+  /* Every page has zero paper margin; text pages carry their own 0.3in
+     margin as padding repeated on each printed page (box-decoration-break),
+     so their layout doesn't depend on browser support for named @page
+     rules. They keep the sheet's background (grey when that's on). */
+  .sheet .rp-text-page {
+    overflow: visible; display: block; width: auto; height: auto; min-height: 0; box-sizing: border-box;
+    padding: 0.3in; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  }
   .rp-text-page .rp-panel { margin: 0; }
 }
 

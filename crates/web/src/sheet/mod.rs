@@ -95,14 +95,16 @@ pub fn SheetPage(id: String) -> impl IntoView {
             </header>
             {move || view! {
                 <style>{
-                    // Sheet pages are positioned edge to edge on the paper; text pages
-                    // (features, spells, continuation) flow over several sheets, so
-                    // they get real margins on every sheet.
-                    if o.a4.get() {
-                        "@page { size: A4; margin: 0; } @page text { size: A4; margin: 0.3in; }"
+                    // Every page is edge to edge on the paper (text pages pad
+                    // themselves). With the grey background on, the whole
+                    // paper is grey, including the end of the last page.
+                    let size = if o.a4.get() { "A4" } else { "letter" };
+                    let tint = if o.tint.get() {
+                        "@media print { html, body { background: #e9e8e7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }"
                     } else {
-                        "@page { size: letter; margin: 0; } @page text { size: letter; margin: 0.3in; }"
-                    }
+                        ""
+                    };
+                    format!("@page {{ size: {size}; margin: 0; }} {tint}")
                 }</style>
             }}
             <main class="sheet" class:a4=move || o.a4.get() class:tint=move || o.tint.get() id="main" aria-label=format!("Character sheet for {}", s.name)>
