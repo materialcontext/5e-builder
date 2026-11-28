@@ -94,7 +94,16 @@ pub fn SheetPage(id: String) -> impl IntoView {
                 <button class="button primary" on:click=move |_| { if let Some(w) = web_sys::window() { let _ = w.print(); } }>{icon("print")}"Print or save PDF"</button>
             </header>
             {move || view! {
-                <style>{if o.a4.get() { "@page { size: A4; margin: 0; }" } else { "@page { size: letter; margin: 0; }" }}</style>
+                <style>{
+                    // Sheet pages are positioned edge to edge on the paper; text pages
+                    // (features, spells, continuation) flow over several sheets, so
+                    // they get real margins on every sheet.
+                    if o.a4.get() {
+                        "@page { size: A4; margin: 0; } @page text { size: A4; margin: 0.3in; }"
+                    } else {
+                        "@page { size: letter; margin: 0; } @page text { size: letter; margin: 0.3in; }"
+                    }
+                }</style>
             }}
             <main class="sheet" class:a4=move || o.a4.get() class:tint=move || o.tint.get() id="main" aria-label=format!("Character sheet for {}", s.name)>
                 <h1 class="visually-hidden">{format!("{} — character sheet", s.name)}</h1>
@@ -115,6 +124,7 @@ fn text_page(title: String, label: &'static str, body: AnyView, columns: bool) -
         <section class="page rp-page rp-text-page" aria-label=label>
             <div class="rp-panel">
                 <h2 class="rp-title">{title}</h2>
+                <p class="no-print rp-flow-note">"On paper this section continues over as many pages as it needs, each with its own margins."</p>
                 <div class:rp-columns=columns class:rp-single=!columns>{body}</div>
             </div>
         </section>

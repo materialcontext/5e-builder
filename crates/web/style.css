@@ -532,6 +532,7 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 
 /* Text pages (feature and spell text, continuation) in the sheet's style. */
 .sheet .rp-text-page { place-items: stretch; height: auto; min-height: var(--page-h); }
+.rp-flow-note { font: italic calc(7.5 * var(--u)) "Alegreya Sans", sans-serif; color: #5f5c5c; text-align: center; margin: calc(-4 * var(--u)) 0 calc(8 * var(--u)); }
 .rp-panel {
   margin: calc(12 * var(--u)); padding: calc(12 * var(--u)) calc(16 * var(--u));
   background: #fff; border: calc(2.7 * var(--u)) solid #a3a1a1; outline: calc(.5 * var(--u)) solid #c9c7c7;
@@ -578,6 +579,7 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
   .sheet .page { box-shadow: none; margin: 0; break-after: page; }
   .sheet .page:last-child { break-after: auto; }
   /* Text pages may run over; let them grow onto further sheets. */
-  .sheet .rp-text-page { overflow: visible; }
+  .sheet .rp-text-page { overflow: visible; page: text; display: block; height: auto; min-height: 0; background: none; }
+  .rp-text-page .rp-panel { margin: 0; }
 }
 
