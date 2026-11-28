@@ -76,6 +76,7 @@ impl Export<'_> {
                 "sp": self.ch.coins.sp, "cp": self.ch.coins.cp,
             },
             "spells": self.spell_slots(),
+            "identifier": slug(&self.ch.name),
             "bonuses": self.global_bonuses(),
         });
         let name = if self.ch.name.trim().is_empty() { "Unnamed character".to_string() } else { self.ch.name.clone() };
@@ -479,6 +480,31 @@ impl Export<'_> {
                 json!({ "_id": adv_id, "type": "HitPoints", "configuration": {}, "value": hp, "flags": {}, "hint": "" }),
             );
             let identifier = slug(&class.name);
+            // Prepared-spell limit by level, as a scale value the class's
+            // preparation formula reads (so it keeps up when levelling).
+            let mut casting = spellcasting(class.spellcasting.caster, class.spellcasting.ability);
+            let sc = &class.spellcasting;
+            let table = if !sc.prepared.is_empty() { &sc.prepared } else { &sc.known };
+            if !table.is_empty() {
+                let mut scale = Map::new();
+                let mut last = None;
+                for (lvl, n) in table.iter().enumerate() {
+                    if *n > 0 && last != Some(*n) {
+                        scale.insert((lvl + 1).to_string(), json!({ "value": n }));
+                        last = Some(*n);
+                    }
+                }
+                let sv_id = self.ids.next(&format!("adv-prepared-{key}"));
+                advancement.insert(
+                    sv_id.clone(),
+                    json!({
+                        "_id": sv_id, "type": "ScaleValue", "name": "Max Prepared Spells",
+                        "configuration": { "identifier": "max-prepared", "type": "number", "scale": scale, "distance": { "units": "" } },
+                        "value": {}, "flags": {}, "hint": "",
+                    }),
+                );
+                casting["preparation"]["formula"] = json!(format!("@scale.{identifier}.max-prepared"));
+            }
             let state = self.b.classes.iter().find(|c| c.key == key);
             let description = class
                 .features
@@ -493,7 +519,7 @@ impl Export<'_> {
                 "levels": levels,
                 "hd": { "denomination": format!("d{}", class.hit_die), "spent": 0, "additional": "" },
                 "primaryAbility": { "value": class.primary.iter().map(|a| ability_id(*a)).collect::<Vec<_>>(), "all": false },
-                "spellcasting": spellcasting(class.spellcasting.caster, class.spellcasting.ability),
+                "spellcasting": casting,
                 "advancement": advancement,
                 "properties": [],
             });
@@ -540,7 +566,7 @@ impl Export<'_> {
             "source": self.source(&sp.source, sp.legacy),
             "movement": { "speeds": speeds, "units": "ft", "hover": false },
             "senses": { "ranges": ranges, "units": "ft", "special": "" },
-            "type": { "value": sp.creature_type.to_lowercase(), "subtype": "", "swarm": "", "custom": "" },
+            "type": { "value": sp.creature_type.to_lowercase(), "subtype": "", "custom": "" },
             "advancement": {},
         });
         // The sheet's species line includes the chosen lineage, if any.
@@ -589,8 +615,7 @@ impl Export<'_> {
                 "description": { "value": Entry::html(&f.feature.body), "chat": "" },
                 "identifier": slug(name),
                 "type": { "value": kind, "subtype": subtype },
-                // A feat's origin reads "Feat: <name>"; nothing to add there.
-                "requirements": if f.origin == format!("Feat: {name}") { String::new() } else { f.origin.clone() },
+                "requirements": self.requirements(f),
                 "source": { "book": "", "custom": f.origin, "rules": "2024", "page": "" },
                 "activities": {},
                 "uses": { "max": "", "spent": 0, "recovery": [] },
@@ -599,6 +624,16 @@ impl Export<'_> {
             });
             self.push(&format!("feature-{i}-{name}"), name, "feat", system);
         }
+    }
+
+    /// What Foundry shows under the name: the class level for features, the
+    /// prerequisite for feats.
+    fn requirements(&self, f: &crate::build::FeatureEntry) -> String {
+        if f.kind != FeatureKind::Feat {
+            return f.origin.clone();
+        }
+        let feat = self.b.feats.iter().filter_map(|(k, _)| self.comp.feats.get(k)).find(|x| x.name == f.feature.name);
+        feat.and_then(|x| x.prereq.as_ref()).map(|p| p.text.clone()).unwrap_or_default()
     }
 
     fn feat_subtype(&self, name: &str) -> &'static str {
@@ -669,7 +704,7 @@ impl Export<'_> {
                 "activation": activation(&spell.time),
                 "duration": duration(&spell.duration),
                 "range": range(&spell.range),
-                "target": { "affects": { "count": "", "type": "", "choice": false, "special": "" }, "template": { "count": "", "contiguous": false, "type": "", "size": "", "width": "", "height": "", "units": "ft" } },
+                "target": spell_target(spell),
                 "method": method,
                 "prepared": prepared,
                 "ability": ability,
@@ -684,9 +719,8 @@ impl Export<'_> {
     fn inventory_items(&mut self) {
         let inventory = self.ch.inventory.clone();
         for (i, inv) in inventory.iter().enumerate() {
-            let it = inv.item.as_ref().and_then(|k| self.comp.items.get(k));
             let label = format!("item-{i}-{}", inv.name);
-            let Some(it) = it else {
+            let Some(it) = inv.item.as_ref().and_then(|k| self.comp.items.get(k)) else {
                 let system = json!({
                     "description": { "value": paragraphs(&inv.notes), "chat": "" },
                     "quantity": inv.qty,
@@ -697,30 +731,81 @@ impl Export<'_> {
                 self.push(&label, &inv.name, "loot", system);
                 continue;
             };
-            let mut description = Entry::html(&it.body);
-            if !inv.notes.trim().is_empty() {
-                description.push_str(&paragraphs(&inv.notes));
+            if it.contents.is_empty() {
+                let name = if inv.name.is_empty() { it.name.clone() } else { inv.name.clone() };
+                let held = Held { qty: inv.qty, equipped: inv.equipped, attuned: inv.attuned, notes: inv.notes.clone(), container: None };
+                self.physical_item(&label, &name, it, held);
+            } else {
+                self.pack(&label, it, inv.qty);
             }
-            let mut system = json!({
-                "description": { "value": description, "chat": "" },
-                "identifier": slug(&it.name),
-                "source": self.source(&it.source, false),
-                "quantity": inv.qty,
-                "weight": { "value": it.weight, "units": "lb" },
-                "price": price(it.value_cp),
-                "rarity": rarity(it.rarity.as_deref()),
-                "attunement": if it.attunement { "required" } else { "" },
-                "attuned": inv.attuned,
-                "equipped": inv.equipped,
-                "identified": true,
-            });
-            let (kind, extra) = self.physical(it, &label);
-            if let (Value::Object(base), Value::Object(extra)) = (&mut system, extra) {
-                base.extend(extra);
-            }
-            let name = if inv.name.is_empty() { it.name.clone() } else { inv.name.clone() };
-            self.push(&label, &name, kind, system);
         }
+    }
+
+    /// An equipment pack: its contents as separate items, placed inside the
+    /// pack's own container (its backpack, chest, ...), as Foundry shows them.
+    fn pack(&mut self, label: &str, pack: &Item, qty: u16) {
+        let contents: Vec<(&Item, u16)> =
+            pack.contents.iter().filter_map(|(k, n)| self.comp.items.get(k).map(|it| (it, n * qty))).collect();
+        let holder = contents.iter().position(|(it, _)| container_capacity(&it.name).is_some());
+        let note = format!("From {}.", pack.name);
+        let container = match holder {
+            Some(h) => {
+                let (it, n) = contents[h];
+                let held = Held { qty: n, equipped: false, attuned: false, notes: note, container: None };
+                self.physical_item(&format!("{label}-{h}"), &it.name, it, held)
+            }
+            // No bag in the pack: the pack itself holds everything.
+            None => {
+                let system = json!({
+                    "description": { "value": Entry::html(&pack.body), "chat": "" },
+                    "identifier": slug(&pack.name),
+                    "source": self.source(&pack.source, false),
+                    "quantity": qty,
+                    "weight": { "value": 0, "units": "lb" },
+                    "price": price(pack.value_cp),
+                    "capacity": { "weight": { "value": null, "units": "lb" } },
+                    "currency": { "pp": 0, "gp": 0, "ep": 0, "sp": 0, "cp": 0 },
+                    "identified": true,
+                });
+                self.push(label, &pack.name, "container", system)
+            }
+        };
+        for (j, (it, n)) in contents.into_iter().enumerate() {
+            if Some(j) == holder {
+                continue;
+            }
+            let held = Held { qty: n, equipped: false, attuned: false, notes: String::new(), container: Some(container.clone()) };
+            self.physical_item(&format!("{label}-{j}"), &it.name, it, held);
+        }
+    }
+
+    fn physical_item(&mut self, label: &str, name: &str, it: &Item, held: Held) -> String {
+        let mut description = Entry::html(&it.body);
+        if !held.notes.trim().is_empty() {
+            description.push_str(&paragraphs(&held.notes));
+        }
+        let mut system = json!({
+            "description": { "value": description, "chat": "" },
+            "identifier": slug(&it.name),
+            "source": self.source(&it.source, false),
+            "quantity": held.qty,
+            "weight": { "value": it.weight, "units": "lb" },
+            "price": price(it.value_cp),
+            "rarities": rarity(it.rarity.as_deref()).into_iter().collect::<Vec<_>>(),
+            "identified": true,
+            "container": held.container,
+        });
+        let (kind, extra) = self.physical(it, label);
+        if kind != "loot" {
+            // Loot can't be equipped or attuned.
+            system["attunement"] = json!(if it.attunement { "required" } else { "" });
+            system["attuned"] = json!(held.attuned);
+            system["equipped"] = json!(held.equipped);
+        }
+        if let (Value::Object(base), Value::Object(extra)) = (&mut system, extra) {
+            base.extend(extra);
+        }
+        self.push(label, name, kind, system)
     }
 
     /// Item type and type-specific system data.
@@ -764,8 +849,8 @@ impl Export<'_> {
                     "damage": { "base": base, "versatile": versatile.unwrap_or(json!({ "types": [] })) },
                     "properties": props,
                     "mastery": w.mastery.as_deref().map(str::to_lowercase).unwrap_or_default(),
-                    "range": { "value": short, "long": long, "units": "ft", "reach": null },
-                    "magicalBonus": if it.bonus != 0 { json!(it.bonus) } else { Value::Null },
+                    "range": { "value": short, "long": long, "units": "ft", "reach": if w.ranged { Value::Null } else if w.properties.iter().any(|p| p.starts_with("reach")) { json!(10) } else { json!(5) } },
+                    "magicalBonus": if it.bonus != 0 { it.bonus.to_string() } else { String::new() },
                     "proficient": null,
                     "activities": activities,
                 }),
@@ -789,7 +874,7 @@ impl Export<'_> {
                 "equipment",
                 json!({
                     "type": { "value": kind, "baseItem": armor_id(&it.name).unwrap_or_default() },
-                    "armor": { "value": a.ac, "dex": dex, "magicalBonus": if it.bonus != 0 { json!(it.bonus) } else { Value::Null } },
+                    "armor": { "value": a.ac, "dex": dex, "magicalBonus": if it.bonus != 0 { it.bonus.to_string() } else { String::new() } },
                     "strength": a.strength,
                     "properties": props,
                     "proficient": null,
@@ -797,6 +882,17 @@ impl Export<'_> {
             );
         }
         let kind = it.kind.to_lowercase();
+        if let Some(capacity) = container_capacity(&it.name) {
+            return ("container", json!({ "capacity": capacity, "currency": { "pp": 0, "gp": 0, "ep": 0, "sp": 0, "cp": 0 }, "properties": [] }));
+        }
+        let lower = it.name.to_lowercase();
+        if ["clothes", "robe", "costume", "vestments"].iter().any(|c| lower.contains(c)) && it.armor.is_none() {
+            return ("equipment", json!({ "type": { "value": "clothing", "baseItem": "" }, "armor": { "value": null, "dex": null }, "properties": [] }));
+        }
+        if let Some(sub) = consumable_gear(&it.name) {
+            let t = if sub == "food" { "food" } else { "" };
+            return ("consumable", json!({ "type": { "value": t, "subtype": "" }, "uses": { "max": "1", "spent": 0, "autoDestroy": true, "recovery": [] }, "properties": if t == "food" { vec!["nutritious"] } else { vec![] } }));
+        }
         if let Some((id, ability)) = tool_id(&it.name) {
             let tool_type = if kind.contains("artisan") {
                 "art"
@@ -839,7 +935,16 @@ impl Export<'_> {
             "gemstone" => ("loot", json!({ "type": { "value": "gem", "subtype": "" } })),
             "art object" => ("loot", json!({ "type": { "value": "art", "subtype": "" } })),
             "trade good" => ("loot", json!({ "type": { "value": "material", "subtype": "" } })),
-            _ => ("loot", json!({ "type": { "value": "gear", "subtype": "" }, "properties": if magic { vec!["mgc"] } else { vec![] } })),
+            _ => {
+                let mut props = Vec::new();
+                if magic {
+                    props.push("mgc");
+                }
+                if kind == "spellcasting focus" {
+                    props.push("foc");
+                }
+                ("loot", json!({ "type": { "value": "gear", "subtype": "" }, "properties": props }))
+            }
         }
     }
 
@@ -1355,9 +1460,11 @@ fn dice(s: &str) -> Option<(u32, u32)> {
 
 fn spell_activities(id: &str, spell: &Spell, consumes_uses: bool) -> Value {
     let types: Vec<String> = spell.damage.iter().map(|d| d.to_lowercase()).filter(|d| DAMAGE.contains(&d.as_str())).collect();
+    let text = Entry::plain(&spell.body);
+    let upcast = upcast_dice(&text);
     let parts: Vec<Value> = match spell.base_damage.as_deref() {
         Some(f) if !types.is_empty() => {
-            let scaling = if spell.level == 0 { json!({ "mode": "whole", "number": null, "formula": "" }) } else { json!({ "mode": "", "number": null, "formula": "" }) };
+            let scaling = scaling(spell.level, dice(f), upcast);
             vec![match dice(f) {
                 Some((n, d)) => json!({ "number": n, "denomination": d, "bonus": "", "types": types, "custom": { "enabled": false, "formula": "" }, "scaling": scaling }),
                 None => json!({ "number": null, "denomination": null, "bonus": "", "types": types, "custom": { "enabled": true, "formula": f }, "scaling": scaling }),
@@ -1382,6 +1489,22 @@ fn spell_activities(id: &str, spell: &Spell, consumes_uses: bool) -> Value {
         "uses": { "spent": 0, "max": "", "recovery": [] },
         "effects": [],
     });
+    let save = spell.save.iter().find_map(|s| Ability::parse(s)).map(ability_id);
+    let mut map = Map::new();
+    if let (Some(_), Some(ab)) = (spell.attack.first(), save) {
+        // Attack and save (Ice Knife): the save gets its own activity.
+        // Same id with a different last character (never equal to the first's).
+        let last = if id.ends_with('s') { 't' } else { 's' };
+        let save_id = format!("{}{last}", &id[..15]);
+        let mut second = act.clone();
+        second["_id"] = json!(save_id);
+        second["sort"] = json!(1);
+        second["type"] = json!("save");
+        second["save"] = json!({ "ability": [ab], "dc": { "calculation": "spellcasting", "formula": "" } });
+        second["damage"] = json!({ "onSave": "none", "parts": [] });
+        second["consumption"]["spellSlot"] = json!(false);
+        map.insert(save_id, second);
+    }
     if let Some(kind) = spell.attack.first() {
         act["type"] = json!("attack");
         act["attack"] = json!({
@@ -1389,22 +1512,157 @@ fn spell_activities(id: &str, spell: &Spell, consumes_uses: bool) -> Value {
             "type": { "value": if kind.eq_ignore_ascii_case("m") { "melee" } else { "ranged" }, "classification": "spell" },
         });
         act["damage"] = json!({ "includeBase": true, "parts": parts, "critical": { "bonus": "" } });
-    } else if !spell.save.is_empty() {
-        let abilities: Vec<&str> = spell.save.iter().filter_map(|s| Ability::parse(s)).map(ability_id).collect();
+    } else if let Some(ab) = save {
+        // Several listed saves are usually separate effects; Foundry rolls the first.
         act["type"] = json!("save");
-        act["save"] = json!({ "ability": abilities, "dc": { "calculation": "spellcasting", "formula": "" } });
+        act["save"] = json!({ "ability": [ab], "dc": { "calculation": "spellcasting", "formula": "" } });
         // Cantrips usually do nothing on a save; leveled damage spells half.
         act["damage"] = json!({ "onSave": if spell.level == 0 { "none" } else { "half" }, "parts": parts });
     } else if !parts.is_empty() {
         act["type"] = json!("damage");
         act["damage"] = json!({ "critical": { "allow": false, "bonus": "" }, "parts": parts });
+    } else if let Some((n, d, bonus)) = healing_dice(&text) {
+        let dice = (n > 0).then_some((n, d));
+        act["type"] = json!("heal");
+        act["healing"] = json!({
+            "number": dice.map(|x| x.0), "denomination": dice.map(|x| x.1), "bonus": bonus, "types": ["healing"],
+            "custom": { "enabled": false, "formula": "" }, "scaling": scaling(spell.level, dice, upcast),
+        });
     } else {
         act["type"] = json!("utility");
         act["roll"] = json!({ "formula": "", "name": "", "prompt": false, "visible": false });
     }
-    let mut map = Map::new();
     map.insert(id.to_string(), act);
     Value::Object(map)
+}
+
+/// Damage or healing scaling: cantrips add their dice at levels 5, 11 and
+/// 17; leveled spells add the "increases by NdM for each spell slot level
+/// above" dice per slot level.
+fn scaling(level: u8, base: Option<(u32, u32)>, upcast: Option<(u32, u32)>) -> Value {
+    match (level, base, upcast) {
+        (0, Some((n, _)), _) => json!({ "mode": "whole", "number": n, "formula": "" }),
+        (1.., Some((_, d)), Some((un, ud))) if d == ud => json!({ "mode": "whole", "number": un, "formula": "" }),
+        _ => json!({ "mode": "", "number": null, "formula": "" }),
+    }
+}
+
+/// Dice right after `needle` in `text`, e.g. "increases by 1d6" → (1, 6).
+fn dice_after(text: &str, needle: &str) -> Option<(usize, (u32, u32))> {
+    let at = text.find(needle)? + needle.len();
+    let tok: String = text[at..].trim_start().chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    Some((at, dice(&tok)?))
+}
+
+/// "The damage increases by 1d6 for each spell slot level above 3."
+fn upcast_dice(text: &str) -> Option<(u32, u32)> {
+    let mut from = 0;
+    while let Some(i) = text[from..].find("increases by") {
+        let at = from + i;
+        if let Some((end, d)) = dice_after(&text[at..], "increases by") {
+            let rest = &text[at + end..];
+            if rest.get(..60).unwrap_or(rest).contains("for each spell slot level above") {
+                return Some(d);
+            }
+        }
+        from = at + "increases by".len();
+    }
+    None
+}
+
+/// Hit points a spell restores: "regains a number of Hit Points equal to 2d8
+/// plus your spellcasting ability modifier" → (2, 8, "@mod"); "regains 70
+/// Hit Points" → (0, 0, "70"); "4d8 + 15" → (4, 8, "15").
+fn healing_dice(text: &str) -> Option<(u32, u32, String)> {
+    let lower = text.to_lowercase();
+    for verb in ["regain", "restor"] {
+        let mut from = 0;
+        while let Some(i) = lower[from..].find(verb) {
+            let start = from + i;
+            from = start + verb.len();
+            let window = &lower[start..lower.len().min(start + 140)];
+            if !window.contains("hit point") {
+                continue;
+            }
+            let Some(pos) = window.find(|c: char| c.is_ascii_digit()) else { continue };
+            let tok: String = window[pos..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+            let after = &window[pos + tok.len()..];
+            let near = after.get(..60).unwrap_or(after);
+            let flat: String = near.trim_start().strip_prefix("+ ").unwrap_or("").chars().take_while(|c| c.is_ascii_digit()).collect();
+            let bonus = if near.contains("spellcasting ability modifier") { "@mod".to_string() } else { flat };
+            match dice(&tok) {
+                Some((n, d)) => return Some((n, d, bonus)),
+                None if tok.chars().all(|c| c.is_ascii_digit()) && near.trim_start().starts_with("hit point") => {
+                    return Some((0, 0, tok));
+                }
+                None => {}
+            }
+        }
+    }
+    None
+}
+
+/// The area a spell fills ("Self (15-ft. cone)", "a 20-foot-radius Sphere"),
+/// so Foundry can place a template.
+fn spell_target(spell: &Spell) -> Value {
+    let text = format!("{} {}", spell.range, Entry::plain(&spell.body)).to_lowercase();
+    let mut template = json!({ "count": "", "contiguous": false, "type": "", "size": "", "width": "", "height": "", "units": "ft" });
+    if let Some((shape, size)) = area(&text) {
+        template["type"] = json!(shape);
+        template["size"] = json!(size.to_string());
+    }
+    json!({ "affects": { "count": "", "type": "", "choice": false, "special": "" }, "template": template })
+}
+
+/// Foundry sizes templates by radius (sphere, cylinder), length (line,
+/// cone) or side (cube, square): "a 10-foot-radius, 40-foot-high Cylinder"
+/// is a cylinder of 10.
+fn area(text: &str) -> Option<(&'static str, u32)> {
+    const SHAPES: [(&str, &str); 7] = [
+        ("sphere", "sphere"), ("cube", "cube"), ("cone", "cone"), ("cylinder", "cylinder"),
+        ("line", "line"), ("emanation", "radius"), ("square", "square"),
+    ];
+    // Every "N-foot" / "N-ft." with the word after it ("radius", "long", ...).
+    let mut sizes: Vec<(usize, u32, String)> = Vec::new();
+    for marker in ["-foot", "-ft."] {
+        let mut from = 0;
+        while let Some(i) = text[from..].find(marker) {
+            let at = from + i;
+            let digits: String = text[..at].chars().rev().take_while(|c| c.is_ascii_digit()).collect::<Vec<_>>().into_iter().rev().collect();
+            let qual: String = text[at + marker.len()..].trim_start_matches(['-', ' ']).chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+            if let Ok(n) = digits.parse() {
+                sizes.push((at, n, qual));
+            }
+            from = at + marker.len();
+        }
+    }
+    let mut best: Option<(usize, &'static str, u32)> = None;
+    for (word, shape) in SHAPES {
+        let mut from = 0;
+        while let Some(i) = text[from..].find(word) {
+            let at = from + i;
+            from = at + word.len();
+            // A shape word on its own ("line of sight") isn't an area: it needs a size nearby.
+            let near: Vec<&(usize, u32, String)> = sizes.iter().filter(|(p, ..)| *p + 40 >= at && *p <= at + 40).collect();
+            let preferred = match shape {
+                "sphere" | "cylinder" => "radius",
+                "line" => "long",
+                _ => "",
+            };
+            // The size named for this shape, else the one closest to the word.
+            let pick = near
+                .iter()
+                .find(|(.., q)| !preferred.is_empty() && q == preferred)
+                .or_else(|| near.iter().min_by_key(|(p, ..)| p.abs_diff(at)));
+            if let Some((_, n, _)) = pick {
+                if best.is_none_or(|(p, ..)| at < p) {
+                    best = Some((at, shape, *n));
+                }
+                break;
+            }
+        }
+    }
+    best.map(|(_, shape, n)| (shape, n))
 }
 
 fn price(cp: Option<u32>) -> Value {
@@ -1416,16 +1674,54 @@ fn price(cp: Option<u32>) -> Value {
     }
 }
 
-fn rarity(r: Option<&str>) -> &'static str {
-    match r.map(str::to_lowercase).as_deref() {
+fn rarity(r: Option<&str>) -> Option<&'static str> {
+    Some(match r.map(str::to_lowercase).as_deref() {
         Some("common") => "common",
         Some("uncommon") => "uncommon",
         Some("rare") => "rare",
         Some("very rare") => "veryRare",
         Some("legendary") => "legendary",
         Some("artifact") => "artifact",
-        _ => "",
-    }
+        _ => return None,
+    })
+}
+
+/// How a carried item is held.
+struct Held {
+    qty: u16,
+    equipped: bool,
+    attuned: bool,
+    notes: String,
+    /// Id of the container item it is in.
+    container: Option<String>,
+}
+
+/// Bags and boxes Foundry should treat as containers, with what they hold.
+fn container_capacity(name: &str) -> Option<Value> {
+    let n = name.to_lowercase();
+    let weight = |lb: u32| json!({ "weight": { "value": lb, "units": "lb" } });
+    Some(match n.as_str() {
+        "backpack" => weight(30),
+        "pouch" => weight(6),
+        "sack" => weight(30),
+        "basket" => weight(40),
+        "chest" => weight(300),
+        "barrel" => weight(400),
+        "quiver" => json!({ "count": 20 }),
+        "crossbow bolt case" => json!({ "count": 20 }),
+        "map or scroll case" | "map case" | "scroll case" => json!({ "count": 10 }),
+        _ => return None,
+    })
+}
+
+/// Everyday gear that is used up (Foundry "consumable"), by name.
+fn consumable_gear(name: &str) -> Option<&'static str> {
+    Some(match name.to_lowercase().as_str() {
+        "rations" | "rations (1 day)" => "food",
+        "acid" | "acid (vial)" | "alchemist's fire" | "alchemist's fire (flask)" | "holy water" | "holy water (flask)"
+        | "oil" | "oil (flask)" | "antitoxin" | "antitoxin (vial)" | "torch" | "ball bearings" | "caltrops" => "",
+        _ => return None,
+    })
 }
 
 fn signed(n: i32) -> String {
@@ -1447,4 +1743,38 @@ fn paragraphs(text: &str) -> String {
         .filter(|p| !p.is_empty())
         .map(|p| format!("<p>{}</p>", escape(p).replace('\n', "<br>")))
         .collect()
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::*;
+
+    // Each case is a spell whose Foundry import (dnd5e 6.1.1) was compared
+    // against this export.
+    #[test]
+    fn healing_from_spell_text() {
+        let cure = "A creature you touch regains a number of Hit Points equal to 2d8 plus your spellcasting ability modifier.";
+        assert_eq!(healing_dice(cure), Some((2, 8, "@mod".into())));
+        assert_eq!(healing_dice("Positive energy washes through the target, restoring 70 Hit Points."), Some((0, 0, "70".into())));
+        assert_eq!(healing_dice("The target regains 4d8 + 15 Hit Points."), Some((4, 8, "15".into())));
+        assert_eq!(healing_dice("You regain the use of your reaction."), None);
+    }
+
+    #[test]
+    fn upcast_uses_the_per_slot_sentence() {
+        let call_lightning = "The damage increases by 1d10. The damage increases by 1d10 for each spell slot level above 3.";
+        assert_eq!(upcast_dice(call_lightning), Some((1, 10)));
+        assert_eq!(upcast_dice("The healing increases by 2d8 for each spell slot level above 1."), Some((2, 8)));
+        assert_eq!(upcast_dice("Its speed increases by 10 feet."), None);
+    }
+
+    #[test]
+    fn templates_sized_like_foundry() {
+        assert_eq!(area("a 10-foot-radius, 40-foot-high cylinder"), Some(("cylinder", 10)));
+        assert_eq!(area("self (60-ft. line) you launch a sunbeam in a 5-foot-wide, 60-foot-long line."), Some(("line", 60)));
+        assert_eq!(area("each creature in a 20-foot-radius sphere centered on that point"), Some(("sphere", 20)));
+        assert_eq!(area("self (15-ft. cone)"), Some(("cone", 15)));
+        assert_eq!(area("grasping weeds sprout in a 20-foot square starting from a point"), Some(("square", 20)));
+        assert_eq!(area("a creature you can see within range"), None);
+    }
 }

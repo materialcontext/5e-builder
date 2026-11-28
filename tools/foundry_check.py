@@ -8,9 +8,21 @@ must be 16 alphanumerics, and details links must point at embedded items.
 
     git clone --depth 1 https://github.com/foundryvtt/dnd5e
     python3 -I tools/foundry_check.py dnd5e out/*.foundry.json
+
+With `--reference actor.json` (an actor exported from Foundry with
+"Export Data"), it also lists field paths the export writes that the
+reference never uses, per item type. That catches fields the system only
+keeps for migration (e.g. `rarity` → `rarities`). Paths absent only
+because the reference character doesn't have such a thing (no magic items,
+no masteries) show up too, so read that list rather than fail on it.
 """
-import json, re, sys, pathlib
-root = pathlib.Path(sys.argv[1])
+import json, re, sys, pathlib, collections
+args = sys.argv[1:]
+reference = None
+if '--reference' in args:
+    i = args.index('--reference'); reference = args[i + 1]; del args[i:i + 2]
+root = pathlib.Path(args[0])
+files = args[1:]
 cfg = (root/'module/config.mjs').read_text()
 def keys(name, depth=2):
     m = re.search(r'^DND5E\.%s = (?:new Proxy\()?\{' % re.escape(name), cfg, re.M)
@@ -52,7 +64,7 @@ def walk_keys(o, path):
             walk_keys(v, f'{path}.{k}')
     elif isinstance(o, list):
         for x in o: walk_keys(x, path)
-for p in sys.argv[2:]:
+for p in files:
     a = json.load(open(p)); s = a['system']; n = a['name']
     walk_keys(a, n)
     for k in s['abilities']: inset(k, 'abilities', n)
@@ -87,7 +99,7 @@ for p in sys.argv[2:]:
         if it['type'] == 'equipment':
             chk(sy['type']['value'] in C['armorTypes'] | C['equipmentTypes'] | C['miscEquipmentTypes'], f'{w}: equipment type')
             inset(sy['type']['baseItem'], 'armorIds', w)
-        if it['type'] == 'consumable': inset(sy['type']['value'], 'consumableTypes', w, False)
+        if it['type'] == 'consumable': inset(sy['type']['value'], 'consumableTypes', w)  # blank is valid (Oil, Torch)
         if it['type'] == 'loot': inset(sy['type']['value'], 'lootTypes', w, False)
         if it['type'] == 'tool': inset(sy['type']['baseItem'], 'tools', w)
         if it['type'] in ('class','subclass'): inset(sy['spellcasting']['progression'], 'progression', w, False); inset(sy['spellcasting']['ability'], 'abilities', w)
@@ -106,4 +118,29 @@ for p in sys.argv[2:]:
                     for dt in part['types']: inset(dt, 'damageTypes', w)
                 for ab in act.get('save', {}).get('ability', []): inset(ab, 'abilities', w)
 print('\n'.join(sorted(set(errors))[:80]) or 'OK', f'({len(set(errors))} problems)')
+
+if reference:
+    def paths(o, p, out):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                k2 = '*' if (re.fullmatch(r'[A-Za-z0-9]{16}', k) or k.isdigit() or p.endswith(('abilities','skills','tools','spells','speeds','ranges','activities','advancement','scale','flags','amount'))) else k
+                if p.endswith('.flags'): continue
+                paths(v, p + '.' + k2, out)
+        elif isinstance(o, list):
+            for x in o: paths(x, p + '[]', out)
+        else: out.add(p)
+    def collect(a):
+        out = collections.defaultdict(set)
+        paths(a['system'], 'actor', out['actor'])
+        for it in a['items']: paths(it['system'], it['type'], out[it['type']])
+        return out
+    ref = collect(json.load(open(reference)))
+    mine = collections.defaultdict(set)
+    for p in files:
+        for k, v in collect(json.load(open(p))).items(): mine[k] |= v
+    print('\nField paths not used by the reference:')
+    for t in sorted(mine):
+        if t not in ref: print('  ', t, ': no item of this type in the reference'); continue
+        extra = sorted(x for x in mine[t] if not any(r == x or r.startswith(x + '.') or r.startswith(x + '[') or x.startswith(r + '.') for r in ref[t]))
+        if extra: print('  ', t, ':', ', '.join(extra))
 sys.exit(1 if errors else 0)

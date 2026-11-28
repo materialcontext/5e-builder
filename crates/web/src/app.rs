@@ -96,9 +96,23 @@ pub fn App() -> impl IntoView {
         }
         .into_any(),
         Some(Ok(c)) => {
+            // A compendium.json from an older importer still loads (new fields
+            // default to empty) but quietly lacks data: say so.
+            let stale = c.schema < compendium::SCHEMA;
             let comp = Arc::new(c);
             provide_context(comp.clone());
-            view! { <Routed route=route /> }.into_any()
+            view! {
+                {stale.then(|| view! {
+                    <div class="stale-banner no-print" role="alert">
+                        <strong>"The rules data is out of date."</strong>
+                        " This compendium.json was built by an older version of the importer, so some details (such as spell damage on the sheet) will be missing. Rebuild it with "
+                        <code>"cargo run -p importer --release -- data/5etools/data crates/web/public/compendium.json"</code>
+                        " (scripts/build-web.sh does this automatically) and reload."
+                    </div>
+                })}
+                <Routed route=route />
+            }
+            .into_any()
         }
     }
 }

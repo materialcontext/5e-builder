@@ -11,10 +11,22 @@ PROFILE=release
 FLAGS=(--release)
 if [ "${1:-}" = "--dev" ]; then PROFILE=debug; FLAGS=(); fi
 
-if [ ! -f crates/web/public/compendium.json ]; then
-  echo "crates/web/public/compendium.json is missing. Run:"
-  echo "  scripts/fetch-5etools.sh && cargo run -p importer --release -- data/5etools/data crates/web/public/compendium.json"
-  exit 1
+# compendium.json is generated (and not in git): rebuild it when it is
+# missing or older than the importer or the content model, so the app never
+# runs on data written by an older importer.
+COMP=crates/web/public/compendium.json
+DATA=data/5etools/data
+if [ ! -f "$COMP" ] || [ -n "$(find crates/importer crates/compendium -newer "$COMP" -type f -print -quit)" ]; then
+  if [ -d "$DATA" ]; then
+    echo "Rebuilding $COMP (importer or content model changed)…"
+    cargo run -q -p importer --release -- "$DATA" "$COMP"
+  elif [ -f "$COMP" ]; then
+    echo "warning: $COMP may be out of date and $DATA is missing (run scripts/fetch-5etools.sh)." >&2
+  else
+    echo "$COMP is missing. Run:"
+    echo "  scripts/fetch-5etools.sh && cargo run -p importer --release -- $DATA $COMP"
+    exit 1
+  fi
 fi
 
 cargo build -p web --target wasm32-unknown-unknown "${FLAGS[@]}"

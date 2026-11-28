@@ -154,6 +154,8 @@ input[type=checkbox] { width: 20px; height: 20px; margin: 2px; accent-color: var
   display: inline-flex; align-items: center; gap: var(--s1); font-size: .75rem; font-weight: 600; line-height: 1.2;
   padding: 3px var(--s2); border-radius: 99px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); margin-left: var(--s1);
 }
+.stale-banner { background: var(--warn-soft); color: var(--warn); padding: var(--s2) var(--s4); font-size: .9rem; line-height: 1.4; }
+.stale-banner code { font-size: .85em; overflow-wrap: anywhere; }
 .badge.warn, .chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .chip.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .chip .icon { width: 1em; height: 1em; }
@@ -579,7 +581,10 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
   .sheet .page { box-shadow: none; margin: 0; break-after: page; }
   .sheet .page:last-child { break-after: auto; }
   /* Text pages may run over; let them grow onto further sheets. */
-  .sheet .rp-text-page { overflow: visible; page: text; display: block; height: auto; min-height: 0; background: none; }
+  /* They print on the margined "text" page, so they take its printable
+     width, not the paper's: a paper-wide box would overflow, and browsers
+     then clip it (Firefox) or shrink every page to fit (Chrome). */
+  .sheet .rp-text-page { overflow: visible; page: text; display: block; width: auto; height: auto; min-height: 0; background: none; }
   .rp-text-page .rp-panel { margin: 0; }
 }
 

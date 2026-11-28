@@ -94,6 +94,7 @@ fn build(dir: &Path) -> Compendium {
     fix_item_refs(&mut species, &mut backgrounds, &mut classes, &mut items);
 
     let mut c = Compendium {
+        schema: compendium::SCHEMA,
         data_version: data_version(dir),
         sources: records::sources(&load(dir, "books.json"), &load(dir, "adventures.json")),
         species: Table::new(species),

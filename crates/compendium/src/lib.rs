@@ -72,8 +72,17 @@ impl<T: Record> Table<T> {
     }
 }
 
+/// Format of `compendium.json`. Bump it whenever the importer starts
+/// writing data the app relies on, so the app can tell a stale file (built
+/// by an older importer, which still loads because new fields default to
+/// empty) from a current one.
+pub const SCHEMA: u32 = 2;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Compendium {
+    /// [`SCHEMA`] of the importer that wrote this file (0: before versioning).
+    #[serde(default)]
+    pub schema: u32,
     /// Version of the upstream data this was built from.
     pub data_version: String,
     pub sources: Vec<SourceInfo>,

@@ -81,6 +81,11 @@ python3 -m http.server -d crates/web/dist 8080
 
 The output in `crates/web/dist` is a static site and can be hosted anywhere.
 
+`compendium.json` is generated, not committed. `build-web.sh` rebuilds it
+whenever the importer or content model has changed since it was written,
+and the app shows a warning if it is given one from an older importer
+(it would load, but without newer data such as spell damage).
+
 ## Tests
 
 ```sh
@@ -103,6 +108,8 @@ that ids are unique and stable, and that every spell and link is present.
 `python3 -I tools/foundry_check.py <dnd5e checkout> out/*.foundry.json` checks
 exported files against the dnd5e system's source: every id and type it uses
 must exist in the system's configuration and every field in its data models.
+Add `--reference actor.json` (an actor exported from Foundry) to also list
+fields the export writes that the reference never uses.
 
 The rules tests run against the generated `compendium.json` when present.
 An audit test checks that every feat/spell/item reference resolves and every
@@ -138,7 +145,10 @@ What comes across:
   spellbook (not prepared), pact magic, at will, and limited free casts
   with their uses and recovery (e.g. 1/long rest). Each has an attack,
   save, damage or utility activity with its damage dice, so it rolls in
-  Foundry. Cantrip damage scales with level.
+  Foundry. Healing spells get a heal activity (dice plus your modifier),
+  cantrip damage scales with level, leveled spells scale per slot level as
+  their text says, and area spells (cone, sphere, cylinder, line…) carry
+  their template.
 
 Foundry computes some numbers itself (AC, hit points, spell slots, save
 DCs). The export is arranged so its result equals this app's sheet: hit
