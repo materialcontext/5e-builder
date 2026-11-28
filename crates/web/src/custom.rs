@@ -295,7 +295,7 @@ pub fn CustomStep() -> impl IntoView {
         let prefs = ctx.ch.with(|c| c.action_spells.clone());
         // (spell key, name, "Level 2")
         type Row = (String, String, String);
-        let mut groups: [(&str, Vec<Row>); 3] = [("Actions", vec![]), ("Bonus actions", vec![]), ("Reactions", vec![])];
+        let mut groups: [(&str, Vec<Row>); 2] = [("Bonus actions", vec![]), ("Reactions", vec![])];
         ctx.build.with(|b| {
             let mut spells: Vec<_> = b
                 .spells
@@ -306,18 +306,18 @@ pub fn CustomStep() -> impl IntoView {
             spells.sort_by_key(|(s, mode)| rules::play::spell_rank(s, mode));
             spells.dedup_by(|a, b| a.0.key == b.0.key);
             for (s, _) in spells {
+                // One-action spells are a single "Cast Spell" entry on the sheet.
                 let i = match rules::play::spell_column(&s.time) {
-                    Some(rules::play::ActionKind::Action) => 0,
-                    Some(rules::play::ActionKind::Bonus) => 1,
-                    Some(rules::play::ActionKind::Reaction) => 2,
-                    None => continue,
+                    Some(rules::play::ActionKind::Bonus) => 0,
+                    Some(rules::play::ActionKind::Reaction) => 1,
+                    _ => continue,
                 };
                 let level = if s.level == 0 { "Cantrip".to_string() } else { format!("Level {}", s.level) };
                 groups[i].1.push((s.key.0.clone(), s.name.clone(), level));
             }
         });
         if groups.iter().all(|(_, v)| v.is_empty()) {
-            return view! { <p class="muted">"No spells cast with an action, bonus action or reaction yet."</p> }.into_any();
+            return view! { <p class="muted">"No spells cast with a bonus action or reaction yet."</p> }.into_any();
         }
         groups
             .into_iter()
@@ -424,7 +424,7 @@ pub fn CustomStep() -> impl IntoView {
         {move || view! { <div class="record-list">{option_list(spell_items, vec![], 1, add_spell, spell_state, "custom-spells")}</div> }}
 
         <h2>"Spells in the Actions box"</h2>
-        <p class="muted">"Page one lists what you can do with an action, a bonus action and a reaction, spells included. Space is limited, so each column fills in order: spells you set to always show, then your features, then other spells (free casts first, then spells that attack, force a save, deal damage or heal, strongest first, then the rest). Spells that don't fit are counted, and all of them are on the spell page. They're listed here in that order."</p>
+        <p class="muted">"Page one lists what you can do with an action, a bonus action and a reaction. Spells cast with an action appear there as one entry, Cast Spell; spells cast with a bonus action or a reaction are listed by name. Space is limited, so those columns fill in order: spells you set to always show, then your features, then other spells (free casts first, then spells that attack, force a save, deal damage or heal, strongest first, then the rest). Spells that don't fit are counted, and all of them are on the spell page. They're listed here in that order."</p>
         {action_spells}
 
         <h2>"Your own features"</h2>

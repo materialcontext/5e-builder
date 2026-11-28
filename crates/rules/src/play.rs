@@ -37,7 +37,8 @@ impl LimitedUse {
 /// Things to do with each kind of action, beyond the attacks listed with
 /// weapons. Each column is in the order it should fill a limited space:
 /// spells the player pinned, then features, then other spells by
-/// [`spell_rank`].
+/// [`spell_rank`]. One-action spells aren't named: the Action column has a
+/// single "Cast Spell" entry instead.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Actions {
     pub action: Vec<ActionEntry>,
@@ -441,11 +442,18 @@ pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[Fea
     }
     push(&mut a.reaction, ActionEntry::feature("Opportunity Attack"));
 
-    // Spells the character can cast now (not spellbook-only), by casting time:
-    // pinned ones first, then after the features in the default order.
+    // Spells the character can cast now (not spellbook-only), by casting time.
+    // One-action spells are a single "Cast Spell" entry (the spell page lists
+    // them); bonus-action and reaction spells are named: pinned ones first,
+    // then after the features in the default order.
+    let mut casts_spells = false;
     let mut spells: Vec<(&compendium::Spell, &SpellMode)> = Vec::new();
     for k in build.spells.iter().filter(|k| k.mode != SpellMode::Spellbook) {
         let Some(s) = comp.spells.get(&k.key) else { continue };
+        if spell_column(&s.time) == Some(ActionKind::Action) {
+            casts_spells = true;
+            continue;
+        }
         if ch.action_spells.get(k.key.as_str()) == Some(&false) || spells.iter().any(|(x, _)| x.key == s.key) {
             continue;
         }
@@ -458,7 +466,7 @@ pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[Fea
         let is_pinned = ch.action_spells.get(s.key.as_str()) == Some(&true);
         let e = ActionEntry { name: s.name.clone(), spell: Some(s.key.clone()), pinned: is_pinned };
         let (target, pin_target) = match kind {
-            ActionKind::Action => (&mut a.action, &mut pinned.action),
+            ActionKind::Action => continue,
             ActionKind::Bonus => (&mut a.bonus, &mut pinned.bonus),
             ActionKind::Reaction => (&mut a.reaction, &mut pinned.reaction),
         };
@@ -468,7 +476,10 @@ pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[Fea
             push(target, e);
         }
     }
-    for (list, pins) in [(&mut a.action, pinned.action), (&mut a.bonus, pinned.bonus), (&mut a.reaction, pinned.reaction)] {
+    if casts_spells {
+        a.action.insert(0, ActionEntry::feature("Cast Spell"));
+    }
+    for (list, pins) in [(&mut a.bonus, pinned.bonus), (&mut a.reaction, pinned.reaction)] {
         let rest = std::mem::take(list);
         let pinned_names: Vec<String> = pins.iter().map(|p| p.name.clone()).collect();
         *list = pins;

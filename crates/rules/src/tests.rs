@@ -1321,31 +1321,31 @@ fn detailed_weapon_rows() {
 #[test]
 fn spells_in_the_actions_box() {
     let Some(comp) = comp() else { return };
-    let (mut ch, s) = leveled("cleric|xphb", None, 9).unwrap();
-    let col = |s: &Sheet| s.actions.action.clone();
-    let actions = col(&s);
-    // Prepared spells with a casting time of one action are listed after features.
-    let first_spell = actions.iter().position(|e| e.spell.is_some()).expect("action spells");
-    assert!(actions[first_spell..].iter().all(|e| e.spell.is_some()), "features first: {:?}", Actions::names(&actions));
-    // Default order: combat spells strongest first, before utility.
-    let spells: Vec<_> = actions.iter().filter_map(|e| e.spell.as_ref()).filter_map(|k| comp.spells.get(k)).collect();
+    let (mut ch, s) = leveled("paladin|xphb", None, 9).unwrap();
+    // One-action spells are a single "Cast Spell" entry, first in its column.
+    assert_eq!(s.actions.action.first().map(|e| e.name.as_str()), Some("Cast Spell"), "{:?}", Actions::names(&s.actions.action));
+    assert!(s.actions.action.iter().all(|e| e.spell.is_none()), "{:?}", Actions::names(&s.actions.action));
+    // Bonus-action spells are named, after the features, in the default order.
+    let col = |s: &Sheet| s.actions.bonus.clone();
+    let bonus = col(&s);
+    let first_spell = bonus.iter().position(|e| e.spell.is_some()).expect("bonus action spells");
+    assert!(bonus[first_spell..].iter().all(|e| e.spell.is_some()), "features first: {:?}", Actions::names(&bonus));
+    let spells: Vec<_> = bonus.iter().filter_map(|e| e.spell.as_ref()).filter_map(|k| comp.spells.get(k)).collect();
+    assert!(spells.iter().all(|sp| sp.time.to_lowercase().contains("bonus action")));
     let b = build(&ch, comp);
     let mode = |k: &Key| b.spells.iter().find(|x| &x.key == k).map(|x| x.mode.clone()).unwrap();
     let ranks: Vec<_> = spells.iter().map(|sp| crate::play::spell_rank(sp, &mode(&sp.key))).collect();
     assert!(ranks.windows(2).all(|w| w[0] <= w[1]), "{ranks:?}");
-    // Bonus-action and reaction spells go to their own columns.
-    for e in s.actions.bonus.iter().filter_map(|e| e.spell.as_ref()) {
-        assert!(comp.spells.get(e).unwrap().time.to_lowercase().contains("bonus action"));
-    }
-    // The player can pin a spell to the top or hide it.
+    assert!(spells.len() >= 2, "{:?}", Actions::names(&bonus));
+    // The player can pin a spell to the top of its column or hide it.
     let last = spells.last().unwrap().key.clone();
     let hidden = spells.first().unwrap().key.clone();
     ch.action_spells.insert(last.0.clone(), true);
     ch.action_spells.insert(hidden.0.clone(), false);
     let b = build(&ch, comp);
     let s = sheet(&ch, &b, comp);
-    let actions = col(&s);
-    assert_eq!(actions[0].spell.as_ref(), Some(&last), "pinned first: {:?}", Actions::names(&actions));
-    assert!(actions[0].pinned);
-    assert!(!actions.iter().any(|e| e.spell.as_ref() == Some(&hidden)), "hidden: {:?}", Actions::names(&actions));
+    let bonus = col(&s);
+    assert_eq!(bonus[0].spell.as_ref(), Some(&last), "pinned first: {:?}", Actions::names(&bonus));
+    assert!(bonus[0].pinned);
+    assert!(!bonus.iter().any(|e| e.spell.as_ref() == Some(&hidden)), "hidden: {:?}", Actions::names(&bonus));
 }
