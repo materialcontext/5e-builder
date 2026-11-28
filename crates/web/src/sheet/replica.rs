@@ -994,7 +994,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         222.6,
         163.9,
         368.4,
-        153.7,
+        114.8,
         [Chamfer(6.0), Square, Square, Square],
     );
     g.text(
@@ -1019,7 +1019,8 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         g.text(x, 194.3, Font::Column, Anchor::Start, None, t);
         g.hline(x, 195.4, w, 0.25, FIELD);
     }
-    let rows = [212.6, 232.1, 251.5, 271.0, 290.4, 309.8];
+    // Four attacks on the page; more continue on the continuation page.
+    let rows = [212.6, 232.1, 251.5, 271.0];
     for (i, y) in rows.iter().enumerate() {
         g.field(228.2, *y, 357.3);
         for x in [321.8, 348.5, 395.5, 436.5, 491.5] {
@@ -1039,25 +1040,34 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
     of.attacks
         .extend(s.attacks.iter().skip(rows.len()).cloned());
 
-    // Class features (two columns).
-    g.frame(
-        222.6,
-        328.6,
-        368.4,
-        230.1,
-        [Chamfer(6.0), Square, Square, Square],
-    );
-    g.text(
-        375.7,
-        340.8,
-        Font::Head,
-        Anchor::Start,
-        Some(62.7),
-        "CLASS FEATURES",
-    );
-    g.grid(222.6, 347.0, 368.4, 211.7);
-    g.title_rule(226.7, 347.0, 360.1);
-    g.vline(407.0, 353.0, 199.0, 0.75, FIELD);
+    // Actions: what the character can do with each kind of action.
+    g.frame(222.6, 289.7, 368.4, 99.3, [Chamfer(6.0), Square, Square, Square]);
+    g.text(406.8, 301.9, Font::Head, Anchor::Middle, None, "ACTIONS");
+    g.title_rule(226.7, 308.1, 360.1);
+    let a = &s.actions;
+    let col_w = 116.0;
+    for (i, (title, list)) in [("Actions", &a.action), ("Bonus Actions", &a.bonus), ("Reactions", &a.reaction)].into_iter().enumerate() {
+        let x = 228.2 + i as f32 * (col_w + 5.0);
+        if i > 0 {
+            g.vline(x - 2.5, 312.0, 72.5, 0.5, DIVIDER);
+        }
+        g.text(x, 316.6, Font::Column, Anchor::Start, None, title);
+        g.hline(x, 317.7, col_w - 2.0, 0.25, FIELD);
+        // One per line while they fit; a long list (a paladin's smites) flows
+        // as a paragraph so the column keeps a readable size.
+        if list.len() <= 6 {
+            let items: Vec<Item> = list.iter().map(|n| Item { name: n.clone(), tag: String::new(), detail: String::new() }).collect();
+            let (h, rest) = list_box(x, 319.5, col_w - 2.0, 66.5, 1, 0.0, items, title);
+            html.push_str(&h.replace("<b>", "").replace("</b>", ""));
+            push_items(of, title, rest);
+        } else {
+            let (h, rest) = text_box(x, 319.5, col_w - 2.0, 66.5, &[("", list.join(", "))], title);
+            html.push_str(&h);
+            of.sections.extend(rest.into_iter().map(|(_, t)| (title.to_string(), esc(&t))));
+        }
+    }
+
+    // Class features and species traits & feats, side by side to the bottom.
     // Class options (maneuvers, invocations…) sit with class features unless a
     // feat granted them. Repeats (Indomitable at 9/13/17, several ASIs) merge.
     let in_feats_box = |f: &rules::build::FeatureEntry| match f.kind {
@@ -1094,79 +1104,25 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
             })
             .collect()
     };
+    let top = 400.0;
+    let height = 761.9 + ext - top;
+
+    g.frame(222.6, top, 200.0, height, [Chamfer(5.0), Square, Square, Square]);
+    g.text(322.6, top + 12.2, Font::Head, Anchor::Middle, None, "CLASS FEATURES");
+    g.grid(222.6, top + 18.4, 200.0, height - 18.4);
+    g.title_rule(226.7, top + 18.4, 191.8);
     let class_items = feature_items(
         &|f| matches!(f.kind, FeatureKind::Class | FeatureKind::Other) && !in_feats_box(f),
         false,
     );
-    let (h, rest) = list_box(
-        228.0,
-        350.0,
-        358.0,
-        205.5,
-        2,
-        12.0,
-        class_items,
-        "Class features",
-    );
+    let (h, rest) = list_box(228.0, top + 21.5, 189.4, height - 24.5, 1, 0.0, class_items, "Class features");
     html.push_str(&h);
     push_items(of, "Class Features", rest);
 
-    // Limited use: every feature with uses, ticked off at the table.
-    g.frame(
-        222.7,
-        569.9,
-        173.6,
-        192.0 + ext,
-        [Chamfer(5.0), Chamfer(5.0), Square, Square],
-    );
-    g.text(309.5, 582.0, Font::Head, Anchor::Middle, None, "LIMITED USE");
-    g.title_rule(226.8, 588.2, 165.4);
-    for (x, t) in [(228.2, "Feature"), (316.0, "Uses"), (365.0, "Recharge")] {
-        g.text(x, 596.2, Font::Column, Anchor::Start, None, t);
-    }
-    let row_h = 12.6;
-    let first = 609.6;
-    let capacity = ((761.0 + ext - first) / row_h).floor() as usize + 1;
-    for (i, u) in s.limited.iter().take(capacity).enumerate() {
-        let y = first + i as f32 * row_h;
-        g.field(228.2, y + 2.0, 163.4);
-        let name = if u.note.starts_with("spell") { format!("{} (spell)", u.name) } else { u.name.clone() };
-        g.value(228.4, y, 86.0, 7.0, Anchor::Start, &name);
-        if u.ticks() {
-            for k in 0..u.uses {
-                g.circle(318.8 + k as f32 * 5.8, y - 2.4, 2.2, art::INK, 0.5, "none");
-            }
-        } else {
-            // Pools (points, hit points, dice): a space to write what's left.
-            g.hline(316.0, y + 0.4, 17.0, 0.4, art::INK);
-            let unit = if u.unit.is_empty() { String::new() } else { format!(" {}", u.unit) };
-            g.value(334.5, y, 30.0, 6.4, Anchor::Start, &format!("/ {}{unit}", u.uses));
-        }
-        g.value(365.2, y, 27.0, 6.2, Anchor::Start, &u.recharge);
-    }
-    if s.limited.len() > capacity {
-        let rest: Vec<Item> = s.limited[capacity..]
-            .iter()
-            .map(|u| Item {
-                name: u.name.clone(),
-                tag: u.note.clone(),
-                detail: format!("{} {}, recharge: {}", u.uses, if u.unit.is_empty() { "uses" } else { &u.unit }, u.recharge),
-            })
-            .collect();
-        push_items(of, "Limited Use", rest);
-    }
-
-    // Species traits and feats (and background or other features) share a box.
-    g.frame(
-        407.3,
-        569.9,
-        183.7,
-        192.0 + ext,
-        [Chamfer(5.0), Chamfer(5.0), Square, Square],
-    );
-    g.text(499.2, 582.0, Font::Head, Anchor::Middle, None, "SPECIES TRAITS & FEATS");
-    g.grid(407.3, 588.2, 183.7, 173.7 + ext);
-    g.title_rule(411.4, 588.2, 175.5);
+    g.frame(433.5, top, 157.5, height, [Square, Chamfer(5.0), Square, Square]);
+    g.text(512.25, top + 12.2, Font::Head, Anchor::Middle, None, "SPECIES TRAITS & FEATS");
+    g.grid(433.5, top + 18.4, 157.5, height - 18.4);
+    g.title_rule(437.6, top + 18.4, 149.3);
     let mut traits: Vec<Item> = feature_items(&|f| f.kind == FeatureKind::Species, false)
         .into_iter()
         .map(|i| Item { tag: "species".into(), ..i })
@@ -1188,18 +1144,21 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         }
     }
     traits.extend(feature_items(&|f| in_feats_box(f), true));
-    let (h, rest) = list_box(412.6, 591.5, 173.5, 167.5 + ext, 1, 0.0, traits, "Species traits and feats");
+    let (h, rest) = list_box(438.8, top + 21.5, 147.0, height - 24.5, 1, 0.0, traits, "Species traits and feats");
     html.push_str(&h);
     push_items(of, "Species Traits & Feats", rest);
 
-    // Equipment training & proficiencies (compact), then actions below it.
+    // Equipment training & proficiencies, with languages.
     g.frame(
         12.0,
         619.5,
         199.6,
-        72.0,
-        [Square, Chamfer(5.0), Square, Square],
+        142.4 + ext,
+        [Square, Chamfer(5.0), Square, Notch(9.0)],
     );
+    g.knob(13.4, 760.4 + ext);
+    // Weapons, tools and languages split any extra length.
+    let e3 = ext / 3.0;
     g.text(
         34.4,
         631.7,
@@ -1208,13 +1167,10 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         Some(154.3),
         "EQUIPMENT TRAINING & PROFICIENCIES",
     );
+    g.grid(12.0, 637.9, 199.6, 124.0 + ext);
     g.title_rule(16.0, 637.9, 191.4);
-    g.title_rule(16.0, 658.8, 191.5);
-    g.hline(16.0, 674.6, 191.5, 0.5, FIELD);
     g.text(16.0, 647.8, Font::Label, Anchor::Start, Some(26.6), "armor");
     g.text(16.0, 654.2, Font::Label, Anchor::Start, Some(36.5), "training");
-    g.text(16.0, 668.6, Font::Label, Anchor::Start, Some(35.8), "weapons");
-    g.text(16.0, 684.4, Font::Label, Anchor::Start, Some(23.8), "tools");
     let has = |p: &str| {
         s.armor_profs
             .iter()
@@ -1229,41 +1185,18 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         g.diamond_tail(x, 648.65, 4.14, has(key));
         g.text(tx, 650.9, Font::Text, Anchor::Start, Some(w), t);
     }
-    for (y, h, label, list, title) in [
-        (660.2, 13.8, "Weapon proficiencies", &s.weapon_profs, "Weapon Proficiencies"),
-        (676.0, 13.8, "Tool proficiencies", &s.tool_profs, "Tool Proficiencies"),
-    ] {
-        let (h, rest) = text_box(54.0, y, 152.5, h, &[("", joined(list))], label);
+    let sections: [(f32, f32, &str, f32, &str, &Vec<String>, &str); 3] = [
+        (658.8, 22.0 + e3, "weapons", 35.8, "Weapon proficiencies", &s.weapon_profs, "Weapon Proficiencies"),
+        (692.5 + e3, 18.0 + e3, "tools", 23.8, "Tool proficiencies", &s.tool_profs, "Tool Proficiencies"),
+        (722.4 + 2.0 * e3, 27.5 + e3, "languages", 44.0, "Languages", &s.languages, "Languages"),
+    ];
+    for (rule_y, h, label, label_w, aria, list, title) in sections {
+        g.title_rule(16.0, rule_y, 191.5);
+        g.text(16.0, rule_y + 7.0, Font::Label, Anchor::Start, Some(label_w), label);
+        let (h, rest) = text_box(16.5, rule_y + 9.7, 190.0, h, &[("", joined(list))], aria);
         html.push_str(&h);
         of.sections.extend(rest.into_iter().map(|(_, t)| (title.to_string(), esc(&t))));
     }
-
-    // Actions: what to do with an action, a bonus action and a reaction.
-    g.frame(
-        12.0,
-        696.5,
-        199.6,
-        65.4 + ext,
-        [Square, Square, Square, Notch(9.0)],
-    );
-    g.knob(13.4, 760.4 + ext);
-    g.text(111.8, 708.7, Font::Head, Anchor::Middle, None, "ACTIONS");
-    g.title_rule(16.0, 714.9, 191.4);
-    let a = &s.actions;
-    let (h, rest) = text_box(
-        16.5,
-        717.5,
-        190.0,
-        41.5 + ext,
-        &[
-            ("Action", a.action.join(", ")),
-            ("Bonus Action", a.bonus.join(", ")),
-            ("Reaction", a.reaction.join(", ")),
-        ],
-        "Actions",
-    );
-    html.push_str(&h);
-    of.sections.extend(rest.into_iter().map(|(l, t)| (format!("{l}s"), esc(&t))));
 
     Page {
         svg: art::svg_page(&g.0, &format!("Character sheet page 1 for {}", s.name), art::H + ext),
