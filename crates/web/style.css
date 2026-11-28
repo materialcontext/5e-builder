@@ -530,7 +530,9 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 }
 .rp-box p { margin: 0 0 .22em; }
 .rp-box b { font-weight: 700; }
-.rp-box .tag { font-size: .82em; color: #5f5c5c; font-style: italic; }
+/* On paper a tag is plain italic text: the app's pill (border, background,
+   padding) prints as a smudge at this size. */
+.rp-box .tag { font-size: .88em; color: #3d3a3a; font-style: italic; border: 0; background: none; padding: 0; border-radius: 0; white-space: normal; line-height: inherit; }
 .rp-box .d { color: #2c2929; }
 .rp-box .more { font-style: italic; color: #5f5c5c; }
 .rp-box.cols { column-count: 2; column-fill: auto; }

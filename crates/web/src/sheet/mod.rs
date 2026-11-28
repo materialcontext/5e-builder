@@ -1,6 +1,7 @@
 //! Printable character sheet: a replica of the two-page 2024 sheet
 //! (US Letter / A4), followed by optional pages with full feature and spell
-//! text and a continuation page for anything that did not fit.
+//! text. Pages 1–2 never spill over: boxes shrink to a readable minimum and
+//! then count what's left, pointing to those text pages.
 
 mod art;
 mod replica;
@@ -11,7 +12,6 @@ use crate::entries::Entries;
 use crate::store::Store;
 use compendium::{Compendium, Entry};
 use leptos::prelude::*;
-use replica::Overflow;
 use rules::build::FeatureKind;
 use rules::sheet::{Sheet, SpellLine};
 use std::sync::Arc;
@@ -60,9 +60,8 @@ pub fn SheetPage(id: String) -> impl IntoView {
     let ch_foundry = ch.clone();
     let replica_pages = move || {
         let ext = replica::extra_height(o.a4.get());
-        let mut overflow = Overflow::default();
-        let p1 = replica::page1(&ch1, &s1, &mut overflow, ext);
-        let p2 = replica::page2(&ch1, &s1, &mut overflow, ext);
+        let p1 = replica::page1(&ch1, &s1, ext);
+        let p2 = replica::page2(&ch1, &s1, ext);
         let page = |p: replica::Page, label: &'static str| {
             view! {
                 <section class="page rp-page" aria-label=label>
@@ -73,8 +72,7 @@ pub fn SheetPage(id: String) -> impl IntoView {
                 </section>
             }
         };
-        let more = (!overflow.is_empty()).then(|| continuation_page(&s1, overflow));
-        view! { {page(p1, "Page 1: core statistics")}{page(p2, "Page 2: spells, story and equipment")}{more} }
+        view! { {page(p1, "Page 1: core statistics")}{page(p2, "Page 2: spells, story and equipment")} }
     };
     let (s2, s3) = (s.clone(), s.clone());
 
@@ -205,90 +203,4 @@ fn spell_text_page(s: &Sheet) -> impl IntoView {
         true,
     )
     .into_any()
-}
-
-fn spell_rows(spells: &[SpellLine]) -> impl IntoView {
-    spells
-        .iter()
-        .map(|x| {
-            let tags = [x.concentration.then_some("C"), x.ritual.then_some("R")].into_iter().flatten().collect::<Vec<_>>().join(" ");
-            view! {
-                <tr>
-                    <td class="c">{if x.level == 0 { "Cantrip".to_string() } else { x.level.to_string() }}</td>
-                    <td class="strong">{x.name.clone()}</td>
-                    <td>{x.time.split(',').next().unwrap_or("").to_string()}</td>
-                    <td>{x.range.clone()}</td>
-                    <td class="c">{tags}</td>
-                    <td>{x.duration.clone()}</td>
-                </tr>
-            }
-        })
-        .collect_view()
-}
-
-fn spell_table(title: &'static str, spells: Vec<SpellLine>) -> impl IntoView {
-    (!spells.is_empty()).then(|| {
-        view! {
-            <section class="rp-group">
-                <h3 class="rp-group-title">{title}</h3>
-                <table class="rp-table">
-                    <thead><tr><th class="c">"Level"</th><th>"Name"</th><th>"Casting Time"</th><th>"Range"</th><th class="c"><abbr title="Concentration / Ritual">"C/R"</abbr></th><th>"Duration"</th></tr></thead>
-                    <tbody>{spell_rows(&spells)}</tbody>
-                </table>
-            </section>
-        }
-    })
-}
-
-/// Everything that did not fit in its box on pages 1–2.
-fn continuation_page(s: &Sheet, of: Overflow) -> impl IntoView {
-    let attacks = (!of.attacks.is_empty()).then(|| {
-        let rows = of
-            .attacks
-            .iter()
-            .map(|a| view! { <tr><td class="strong">{a.name.clone()}</td><td class="c">{a.ability.abbr()}{if a.proficient { "" } else { " (not proficient)" }}</td><td>{a.range.clone()}</td><td class="c">{a.to_hit()}</td><td>{a.damage()}</td><td>{a.notes.clone()}</td></tr> })
-            .collect_view();
-        view! {
-            <section class="rp-group">
-                <h3 class="rp-group-title">"Weapons & Damage Cantrips (continued)"</h3>
-                <table class="rp-table">
-                    <thead><tr><th>"Name"</th><th class="c">"Abil."</th><th>"Range"</th><th class="c">"Atk / DC"</th><th>"Damage & Type"</th><th>"Notes"</th></tr></thead>
-                    <tbody>{rows}</tbody>
-                </table>
-            </section>
-        }
-    });
-    let attuned = (!of.attuned.is_empty()).then(|| {
-        view! {
-            <section class="rp-group">
-                <h3 class="rp-group-title">"Magic Item Attunement (continued)"</h3>
-                <ul class="rp-list">{of.attuned.iter().map(|a| view! { <li>{a.clone()}</li> }).collect_view()}</ul>
-            </section>
-        }
-    });
-    let sections = of
-        .sections
-        .into_iter()
-        .map(|(title, html)| {
-            view! {
-                <section class="rp-group">
-                    <h3 class="rp-group-title">{format!("{title} (continued)")}</h3>
-                    <div class="rp-flow" inner_html=html></div>
-                </section>
-            }
-        })
-        .collect_view();
-    let body = view! {
-        {attacks}
-        {spell_table("Cantrips & Prepared Spells (continued)", of.spells)}
-        {spell_table("Spellbook — not prepared", of.spellbook)}
-        {attuned}
-        {sections}
-    };
-    text_page(
-        format!("{} — Continued", s.name),
-        "Continuation page",
-        body.into_any(),
-        false,
-    )
 }

@@ -22,26 +22,6 @@ pub struct Page {
     pub html: String,
 }
 
-/// Content that did not fit on the two pages, printed on a continuation page.
-#[derive(Default)]
-pub struct Overflow {
-    pub attacks: Vec<rules::sheet::Attack>,
-    pub spells: Vec<SpellLine>,
-    pub spellbook: Vec<SpellLine>,
-    pub attuned: Vec<String>,
-    pub sections: Vec<(String, String)>,
-}
-
-impl Overflow {
-    pub fn is_empty(&self) -> bool {
-        self.attacks.is_empty()
-            && self.spells.is_empty()
-            && self.spellbook.is_empty()
-            && self.attuned.is_empty()
-            && self.sections.is_empty()
-    }
-}
-
 // ------------------------------------------------------------------ page size
 
 thread_local! {
@@ -207,7 +187,9 @@ fn list_html(items: &[Item], details: bool, more: usize, more_note: &str) -> Str
     o
 }
 
-/// A fitted list box. Returns the HTML and the items that did not fit.
+/// A fitted list box. Items that don't fit are counted in a closing
+/// "+N more — {more_note}" line.
+#[allow(clippy::too_many_arguments)]
 fn list_box(
     x: f32,
     y: f32,
@@ -217,11 +199,12 @@ fn list_box(
     gap: f32,
     items: Vec<Item>,
     label: &str,
-) -> (String, Vec<Item>) {
+    more_note: &str,
+) -> String {
     let col_w = (w - gap * (cols as f32 - 1.0)) / cols as f32;
     let (size, details, n) = fit_list(&items, col_w, h, cols, 7.5);
     let more = items.len() - n;
-    let inner = list_html(&items[..n], details, more, "see the continuation page");
+    let inner = list_html(&items[..n], details, more, more_note);
     let class = if cols > 1 { "list cols" } else { "list" };
     let mut html = html_box(x, y, w, h, size, class, &inner, label);
     if cols > 1 {
@@ -231,10 +214,11 @@ fn list_box(
             1,
         );
     }
-    (html, items[n..].to_vec())
+    html
 }
 
-/// Paragraph text fitted into a box: (label, text) pairs.
+/// Paragraph text fitted into a box: (label, text) pairs. Shrinks to a
+/// minimum size; anything still too long is cut with "…".
 fn text_box(
     x: f32,
     y: f32,
@@ -242,13 +226,13 @@ fn text_box(
     h: f32,
     paras: &[(&str, String)],
     label: &str,
-) -> (String, Vec<(String, String)>) {
-    let paras: Vec<(&str, &str)> = paras
+) -> String {
+    let paras: Vec<(&str, String)> = paras
         .iter()
         .filter(|(_, t)| !t.trim().is_empty())
-        .map(|(l, t)| (*l, t.trim()))
+        .map(|(l, t)| (*l, t.trim().to_string()))
         .collect();
-    let height = |size: f32, ps: &[(&str, &str)]| -> f32 {
+    let height = |size: f32, ps: &[(&str, String)]| -> f32 {
         ps.iter()
             .map(|(l, t)| {
                 let lines: f32 = t
@@ -259,7 +243,7 @@ fn text_box(
             })
             .sum()
     };
-    let render = |ps: &[(&str, &str)]| -> String {
+    let render = |ps: &[(&str, String)]| -> String {
         ps.iter()
             .map(|(l, t)| {
                 let lab = if l.is_empty() {
@@ -273,26 +257,29 @@ fn text_box(
     };
     for s in [8.0, 7.5, 7.0, 6.5, 6.0, 5.5] {
         if height(s, &paras) <= h {
-            return (
-                html_box(x, y, w, h, s, "text", &render(&paras), label),
-                vec![],
-            );
+            return html_box(x, y, w, h, s, "text", &render(&paras), label);
         }
     }
-    // Keep whole paragraphs that fit; the rest continue on the next page.
+    // Keep whole paragraphs that fit, then as many words of the next as fit.
     let mut n = paras.len();
-    while n > 0 && height(5.5, &paras[..n]) + 8.0 > h {
+    while n > 0 && height(5.5, &paras[..n]) > h {
         n -= 1;
     }
-    let mut inner = render(&paras[..n]);
-    if n < paras.len() {
-        inner.push_str(r#"<p class="more">Continued on the continuation page.</p>"#);
+    let mut kept: Vec<(&str, String)> = paras[..n].to_vec();
+    if let Some((l, t)) = paras.get(n) {
+        let words: Vec<&str> = t.split_whitespace().collect();
+        let mut k = words.len();
+        while k > 0 {
+            let mut trial = kept.clone();
+            trial.push((l, format!("{}…", words[..k].join(" "))));
+            if height(5.5, &trial) <= h {
+                kept = trial;
+                break;
+            }
+            k -= 1;
+        }
     }
-    let rest = paras[n..]
-        .iter()
-        .map(|(l, t)| (l.to_string(), t.to_string()))
-        .collect();
-    (html_box(x, y, w, h, 5.5, "text", &inner, label), rest)
+    html_box(x, y, w, h, 5.5, "text", &render(&kept), label)
 }
 
 // ------------------------------------------------------------------ helpers
@@ -582,7 +569,7 @@ fn skill_width(name: &str) -> Option<f32> {
 
 // ------------------------------------------------------------------ page 1
 
-pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
+pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
     PAGE_H.with(|h| h.set(art::H + ext));
     let mut g = Svg::default();
     let mut html = String::new();
@@ -1019,13 +1006,11 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         g.text(x, 194.3, Font::Column, Anchor::Start, None, t);
         g.hline(x, 195.4, w, 0.25, FIELD);
     }
-    // Four attacks on the page; more continue on the continuation page.
+    // Four attacks on the page (the Custom step chooses which).
     let rows = [212.6, 232.1, 251.5, 271.0];
-    // Never smaller than these (in sheet units, ~1pt): long text is cut with
-    // "…" and stays complete on the continuation page.
+    // Never smaller than these (in sheet units, ~1pt): long text is cut with "…".
     const MIN_VALUE: f32 = 6.6;
     const MIN_NOTE: f32 = 5.6;
-    let mut clipped = Vec::new();
     for (i, y) in rows.iter().enumerate() {
         g.field(228.2, *y, 357.3);
         for x in [325.6, 352.2, 416.8, 457.5, 510.5] {
@@ -1041,16 +1026,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         g.value_min(459.4, bl, 49.5, 7.6, MIN_VALUE, Anchor::Start, &a.dice);
         g.value_min(512.4, bl, 73.0, 7.2, MIN_VALUE, Anchor::Start, &a.damage_type);
         g.note(228.6, y - 2.2, 356.5, 6.2, MIN_NOTE, &a.notes);
-        let fits = |t: &str, size: f32, w: f32| art::text_width(t, art::fit(t, size, w, MIN_VALUE)) <= w;
-        let note_fits = art::text_width(&a.notes, art::fit(&a.notes, 6.2, 356.5, MIN_NOTE)) <= 356.5;
-        if !(fits(&a.name, 7.8, 95.0) && fits(&a.range, 6.8, 61.5) && fits(&a.dice, 7.6, 49.5) && fits(&a.damage_type, 7.2, 73.0) && note_fits) {
-            clipped.push(a.clone());
-        }
     }
-    // Rows cut short on the page are repeated in full on the continuation page.
-    of.attacks.extend(clipped);
-    of.attacks
-        .extend(s.attacks.iter().skip(rows.len()).cloned());
 
     // Actions: what the character can do with each kind of action.
     g.frame(222.6, 289.7, 368.4, 99.3, [Chamfer(6.0), Square, Square, Square]);
@@ -1070,9 +1046,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         g.hline(x, 317.7, col_w - 2.0, 0.25, FIELD);
         let entries: Vec<&rules::play::ActionEntry> =
             list.iter().filter(|e| e.spell.is_none() || !shown_attacks.contains(&e.name.as_str())).collect();
-        let (h, leftover) = action_column(x, 319.5, col_w - 2.0, 66.5, &entries, title);
-        html.push_str(&h);
-        push_items(of, title, leftover);
+        html.push_str(&action_column(x, 319.5, col_w - 2.0, 66.5, &entries, title));
     }
 
     // Class features and species traits & feats, side by side to the bottom.
@@ -1123,9 +1097,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         &|f| matches!(f.kind, FeatureKind::Class | FeatureKind::Other) && !in_feats_box(f),
         false,
     );
-    let (h, rest) = list_box(228.0, top + 21.5, 189.4, height - 24.5, 1, 0.0, class_items, "Class features");
-    html.push_str(&h);
-    push_items(of, "Class Features", rest);
+    html.push_str(&list_box(228.0, top + 21.5, 189.4, height - 24.5, 1, 0.0, class_items, "Class features", "see the Features & Traits pages"));
 
     g.frame(433.5, top, 157.5, height, [Square, Chamfer(5.0), Square, Square]);
     g.text(512.25, top + 12.2, Font::Head, Anchor::Middle, None, "SPECIES TRAITS & FEATS");
@@ -1152,9 +1124,7 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         }
     }
     traits.extend(feature_items(&|f| in_feats_box(f), true));
-    let (h, rest) = list_box(438.8, top + 21.5, 147.0, height - 24.5, 1, 0.0, traits, "Species traits and feats");
-    html.push_str(&h);
-    push_items(of, "Species Traits & Feats", rest);
+    html.push_str(&list_box(438.8, top + 21.5, 147.0, height - 24.5, 1, 0.0, traits, "Species traits and feats", "see the Features & Traits pages"));
 
     // Equipment training & proficiencies, with languages.
     g.frame(
@@ -1193,19 +1163,17 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         g.diamond_tail(x, 648.65, 4.14, has(key));
         g.text(tx, 650.9, Font::Text, Anchor::Start, Some(w), t);
     }
-    // (rule y, text height, label, label width, aria label, list, continuation title)
-    type Section<'a> = (f32, f32, &'a str, f32, &'a str, &'a Vec<String>, &'a str);
+    // (rule y, text height, label, label width, aria label, list)
+    type Section<'a> = (f32, f32, &'a str, f32, &'a str, &'a Vec<String>);
     let sections: [Section; 3] = [
-        (658.8, 22.0 + e3, "weapons", 35.8, "Weapon proficiencies", &s.weapon_profs, "Weapon Proficiencies"),
-        (692.5 + e3, 18.0 + e3, "tools", 23.8, "Tool proficiencies", &s.tool_profs, "Tool Proficiencies"),
-        (722.4 + 2.0 * e3, 27.5 + e3, "languages", 44.0, "Languages", &s.languages, "Languages"),
+        (658.8, 22.0 + e3, "weapons", 35.8, "Weapon proficiencies", &s.weapon_profs),
+        (692.5 + e3, 18.0 + e3, "tools", 23.8, "Tool proficiencies", &s.tool_profs),
+        (722.4 + 2.0 * e3, 27.5 + e3, "languages", 44.0, "Languages", &s.languages),
     ];
-    for (rule_y, h, label, label_w, aria, list, title) in sections {
+    for (rule_y, h, label, label_w, aria, list) in sections {
         g.title_rule(16.0, rule_y, 191.5);
         g.text(16.0, rule_y + 7.0, Font::Label, Anchor::Start, Some(label_w), label);
-        let (h, rest) = text_box(16.5, rule_y + 9.7, 190.0, h, &[("", joined(list))], aria);
-        html.push_str(&h);
-        of.sections.extend(rest.into_iter().map(|(_, t)| (title.to_string(), esc(&t))));
+        html.push_str(&text_box(16.5, rule_y + 9.7, 190.0, h, &[("", joined(list))], aria));
     }
 
     Page {
@@ -1216,13 +1184,23 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
 
 /// One column of the Actions box, filled in order until it is full, never
 /// below a readable size. Up to six entries are one per line; more flow as
-/// a paragraph. Spells are in italics. Returns the HTML and the features
-/// that didn't fit (spells that don't fit are on page 2 anyway, so they
-/// are only counted).
-fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::ActionEntry], label: &str) -> (String, Vec<Item>) {
+/// a paragraph ending with a count of what didn't fit. Spells are in italics.
+fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::ActionEntry], label: &str) -> String {
     const MIN: f32 = 6.6;
     let name_html = |e: &rules::play::ActionEntry| if e.spell.is_some() { format!("<i>{}</i>", esc(&e.name)) } else { esc(&e.name) };
-    let more_note = |n: usize| if n > 0 { format!("+{n} more spell{} (page 2)", if n > 1 { "s" } else { "" }) } else { String::new() };
+    // "+3 more (spell page)", "+1 more (Features & Traits)"
+    let more_note = |rest: &[&&rules::play::ActionEntry]| {
+        if rest.is_empty() {
+            return String::new();
+        }
+        let spells = rest.iter().filter(|e| e.spell.is_some()).count();
+        let place = match (spells, rest.len() - spells) {
+            (_, 0) => "spell pages",
+            (0, _) => "Features & Traits",
+            _ => "Features & Traits, spell pages",
+        };
+        format!("+{} more ({place})", rest.len())
+    };
     let lines_h = |lines: f32, size: f32| (lines + 0.25) * size * 1.17;
     // One per line.
     if entries.len() <= 6 {
@@ -1230,16 +1208,17 @@ fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::Action
             let lines: f32 = entries.iter().map(|e| (text_width(&e.name, size) / w).ceil().max(1.0)).sum();
             if lines_h(lines, size) <= h {
                 let inner: String = entries.iter().map(|e| format!("<p>{}</p>", name_html(e))).collect();
-                return (html_box(x, y, w, h, size, "text", &inner, label), vec![]);
+                return html_box(x, y, w, h, size, "text", &inner, label);
             }
         }
     }
     // A paragraph: the first k entries, plus a note for what's left.
+    let rest = |k: usize| entries[k..].iter().collect::<Vec<_>>();
     let para = |k: usize| {
         let mut t: Vec<String> = entries[..k].iter().map(|e| e.name.clone()).collect();
-        let more = entries[k..].iter().filter(|e| e.spell.is_some()).count();
-        if more > 0 {
-            t.push(more_note(more));
+        let note = more_note(&rest(k));
+        if !note.is_empty() {
+            t.push(note);
         }
         t.join(", ")
     };
@@ -1249,26 +1228,13 @@ fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::Action
         .find_map(|size| fits(entries.len(), size).then_some((size, entries.len())))
         .unwrap_or_else(|| (MIN, (0..=entries.len()).rev().find(|&k| fits(k, MIN)).unwrap_or(0)));
     let mut parts: Vec<String> = entries[..k].iter().map(|e| name_html(e)).collect();
-    let more = entries[k..].iter().filter(|e| e.spell.is_some()).count();
-    if more > 0 {
-        parts.push(format!(r#"<span class="more">{}</span>"#, esc(&more_note(more))));
+    let note = more_note(&rest(k));
+    if !note.is_empty() {
+        parts.push(format!(r#"<span class="more">{}</span>"#, esc(&note)));
     }
-    let inner = format!("<p>{}</p>", parts.join(", "));
-    let leftover = entries[k..]
-        .iter()
-        .filter(|e| e.spell.is_none())
-        .map(|e| Item { name: e.name.clone(), tag: String::new(), detail: String::new() })
-        .collect();
-    (html_box(x, y, w, h, size, "text", &inner, label), leftover)
+    html_box(x, y, w, h, size, "text", &format!("<p>{}</p>", parts.join(", ")), label)
 }
 
-fn push_items(of: &mut Overflow, title: &str, items: Vec<Item>) {
-    if items.is_empty() {
-        return;
-    }
-    of.sections
-        .push((title.to_string(), list_html(&items, true, 0, "")));
-}
 
 // ------------------------------------------------------------------ page 2
 
@@ -1328,7 +1294,7 @@ fn spell_note(sp: &SpellLine, s: &Sheet) -> String {
     parts.join("; ")
 }
 
-pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
+pub fn page2(ch: &Character, s: &Sheet, ext: f32) -> Page {
     PAGE_H.with(|h| h.set(art::H + ext));
     let mut g = Svg::default();
     let mut html = String::new();
@@ -1651,20 +1617,28 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
     ] {
         g.hline(x, 175.7, w, 0.25, FIELD);
     }
-    // Cantrips and prepared/always-available spells fill the table; spellbook
-    // entries that are not prepared go on the continuation page.
-    let (table, book): (Vec<&SpellLine>, Vec<&SpellLine>) =
+    // Cantrips and prepared/always-available spells fill the table, then
+    // spellbook entries that aren't prepared. A long list packs the rows
+    // closer (down to two thirds of their height, text never below ~6pt);
+    // past that, the last row counts what's left.
+    let (mut list, book): (Vec<&SpellLine>, Vec<&SpellLine>) =
         s.spells.iter().partition(|x| x.status != "Book");
-    of.spellbook.extend(book.into_iter().cloned());
-    for i in 0..rows {
-        let y = 192.6 + 19.44 * i as f32;
+    list.extend(book);
+    let area = rows as f32 * 19.44;
+    let pitch = if list.len() > rows { (area / list.len() as f32).max(13.0) } else { 19.44 };
+    let fit_rows = (area / pitch + 0.01).floor() as usize;
+    let k = pitch / 19.44;
+    let shown = if list.len() > fit_rows { fit_rows - 1 } else { list.len() };
+    let small = |size: f32, min: f32| (size * k).max(min).min(size);
+    for i in 0..fit_rows {
+        let top = 181.0 + pitch * i as f32;
+        let y = top + 11.6 * k;
         g.field(17.6, y, 20.3);
         g.field(42.4, y, 107.8);
         g.field(154.7, y, 29.4);
         g.field(188.7, y, 41.2);
         g.field(305.0, y, 85.8);
-        let top = 181.0 + 19.44 * i as f32;
-        let sp = table.get(i);
+        let sp = if i < shown { list.get(i) } else { None };
         let marks = sp
             .map(|x| (x.concentration, x.ritual, required_material(&x.components)))
             .unwrap_or_default();
@@ -1676,44 +1650,29 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         .into_iter()
         .enumerate()
         {
-            g.diamond_tail(x + 4.15, top + 4.15, 4.14, on);
-            g.text(
-                [249.1, 270.8, 292.5][j],
-                top + 6.4,
-                Font::Faint,
-                Anchor::Start,
-                None,
-                letter,
-            );
+            g.diamond_tail(x + 4.15, top + 4.15 * k, 4.14 * k, on);
+            g.text([249.1, 270.8, 292.5][j], top + 6.4 * k, Font::Faint, Anchor::Start, None, letter);
         }
+        let bl = y - 3.0 * k.max(0.8);
         if let Some(sp) = sp {
-            let bl = y - 3.0;
-            g.value(
-                27.75,
-                bl,
-                20.0,
-                7.5,
-                Anchor::Middle,
-                &if sp.level == 0 {
-                    "Cantrip".to_string()
-                } else {
-                    sp.level.to_string()
-                },
-            );
-            g.value(42.8, bl, 107.0, 7.8, Anchor::Start, &sp.name);
-            g.value(155.0, bl, 29.0, 6.5, Anchor::Start, &short_time(&sp.time));
-            g.value(189.0, bl, 40.8, 6.5, Anchor::Start, &sp.range);
-            g.value(305.4, bl, 85.0, 6.2, Anchor::Start, &spell_note(sp, s));
+            g.value_min(27.75, bl, 20.0, small(7.5, 6.2), 6.2, Anchor::Middle, &if sp.level == 0 { "Cantrip".to_string() } else { sp.level.to_string() });
+            g.value_min(42.8, bl, 107.0, small(7.8, 6.6), 6.6, Anchor::Start, &sp.name);
+            g.value_min(155.0, bl, 29.0, small(6.5, 6.0), 6.0, Anchor::Start, &short_time(&sp.time));
+            g.value_min(189.0, bl, 40.8, small(6.5, 6.0), 6.0, Anchor::Start, &sp.range);
+            g.value_min(305.4, bl, 85.0, small(6.2, 6.0), 6.0, Anchor::Start, &spell_note(sp, s));
+        } else if i == shown && list.len() > shown {
+            let more = list.len() - shown;
+            g.note(42.8, bl, 260.0, 6.6, 6.0, &format!("+{more} more spells — see the Spell Descriptions pages"));
         }
     }
-    of.spells.extend(table.into_iter().skip(rows).cloned());
 
     // Appearance.
     let right_box = |g: &mut Svg, y: f32, h: f32, c: [Corner; 4]| g.frame(407.3, y, 183.7, h, c);
+    // Its bottom lines up with the spellcasting and spell slot boxes.
     right_box(
         &mut g,
         12.2,
-        94.3,
+        116.0,
         [Square, Notch(8.0), Square, Chamfer(4.0)],
     );
     g.knob(589.4, 13.6);
@@ -1725,7 +1684,7 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         Some(49.2),
         "APPEARANCE",
     );
-    g.grid(407.3, 30.5, 183.7, 76.0);
+    g.grid(407.3, 30.5, 183.7, 97.7);
     g.title_rule(411.4, 30.5, 175.5);
     let looks: Vec<String> = [
         ("Age", &d.age),
@@ -1741,42 +1700,39 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
     .filter(|(_, v)| !v.trim().is_empty())
     .map(|(l, v)| format!("{l}: {}", v.trim()))
     .collect();
-    let (h, rest) = text_box(
+    html.push_str(&text_box(
         412.6,
         33.0,
         173.5,
-        72.0,
+        93.5,
         &[("", looks.join(" · ")), ("", d.appearance.clone())],
         "Appearance",
-    );
-    html.push_str(&h);
-    of.sections.extend(
-        rest.into_iter()
-            .map(|(_, t)| ("Appearance".to_string(), esc(&t))),
-    );
+    ));
 
-    // Backstory & personality, alignment.
-    right_box(&mut g, 117.5, 192.6, [Chamfer(4.0); 4]);
+    // Backstory & personality, alignment: level with the spell table.
+    let (by, bh) = (138.8, 212.6);
+    right_box(&mut g, by, bh, [Chamfer(4.0); 4]);
     g.text(
         446.0,
-        129.8,
+        by + 12.3,
         Font::Head,
         Anchor::Start,
         Some(106.0),
         "BACKSTORY & PERSONALITY",
     );
-    g.grid(407.3, 135.9, 183.7, 141.0);
-    g.title_rule(411.4, 135.9, 175.5);
+    let text_h = bh - 18.4 - 33.2;
+    g.grid(407.3, by + 18.4, 183.7, text_h);
+    g.title_rule(411.4, by + 18.4, 175.5);
     g.text(
         412.7,
-        285.6,
+        by + bh - 24.5,
         Font::Text,
         Anchor::Start,
         Some(31.7),
         "Alignment",
     );
-    g.field(413.6, 302.5, 171.8);
-    g.value(414.0, 300.2, 171.0, 9.0, Anchor::Start, &d.alignment);
+    g.field(413.6, by + bh - 7.6, 171.8);
+    g.value(414.0, by + bh - 9.9, 171.0, 9.0, Anchor::Start, &d.alignment);
     let story = [
         ("Personality:", d.personality.clone()),
         ("Ideals:", d.ideals.clone()),
@@ -1786,60 +1742,32 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         ("Allies & organizations:", d.allies.clone()),
         ("Notes:", d.notes.clone()),
     ];
-    let (h, rest) = text_box(
+    html.push_str(&text_box(
         412.6,
-        138.5,
+        by + 21.0,
         173.5,
-        137.0,
+        text_h - 4.0,
         &story,
         "Backstory and personality",
-    );
-    html.push_str(&h);
-    of.sections.extend(
-        rest.into_iter()
-            .map(|(l, t)| (l.trim_end_matches(':').to_string(), esc(&t))),
-    );
+    ));
 
-    // Languages.
-    right_box(&mut g, 321.1, 57.0, [Chamfer(4.0); 4]);
-    g.text(
-        475.7,
-        333.3,
-        Font::Head,
-        Anchor::Start,
-        Some(46.6),
-        "LANGUAGES",
-    );
-    g.grid(407.3, 339.5, 183.7, 38.6);
-    g.title_rule(411.4, 339.5, 175.5);
-    let (h, rest) = text_box(
-        412.6,
-        342.0,
-        173.5,
-        34.5,
-        &[("", joined(&s.languages))],
-        "Languages",
-    );
-    html.push_str(&h);
-    of.sections.extend(
-        rest.into_iter()
-            .map(|(_, t)| ("Languages".to_string(), esc(&t))),
-    );
+    // (Languages are on page 1, with the other proficiencies.)
 
     // Equipment and attunement.
-    right_box(&mut g, 389.0, 269.3 + ext, [Chamfer(4.0); 4]);
+    // Equipment fills the column down to the coins, which sit at the very bottom.
+    right_box(&mut g, 362.0, 316.3 + ext, [Chamfer(4.0); 4]);
     g.text(
         475.9,
-        401.3,
+        374.3,
         Font::Head,
         Anchor::Start,
         Some(46.2),
         "EQUIPMENT",
     );
-    g.grid(407.3, 407.4, 183.7, 178.0 + ext);
-    g.title_rule(411.4, 407.4, 175.5);
+    g.grid(407.3, 380.4, 183.7, 225.0 + ext);
+    g.title_rule(411.4, 380.4, 175.5);
     // Attunement lines sit at the bottom of the box: move them down with it.
-    g.raw(&format!(r#"<g transform="translate(0 {ext})">"#));
+    g.raw(&format!(r#"<g transform="translate(0 {})">"#, ext + 20.0));
     g.text(
         412.7,
         593.8,
@@ -1863,11 +1791,12 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
             attuned.get(i).is_some(),
         );
         if let Some(n) = attuned.get(i) {
-            g.value(431.0, y - 2.2, 154.0, 8.5, Anchor::Start, n);
+            // More than three (a house rule): the last line counts the rest.
+            let n = if i == 2 && attuned.len() > 3 { format!("{n} (+{} more)", attuned.len() - 3) } else { n.clone() };
+            g.value(431.0, y - 2.2, 154.0, 8.5, Anchor::Start, &n);
         }
     }
     g.raw("</g>");
-    of.attuned.extend(attuned.into_iter().skip(3));
     let items: Vec<Item> = s
         .inventory
         .iter()
@@ -1883,13 +1812,11 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
             detail: i.notes.clone(),
         })
         .collect();
-    let (mut h, rest) = list_box(412.6, 410.0, 173.5, 165.0 + ext, 2, 8.0, items, "Equipment");
-    h = h.replacen("rp-box list", "rp-box list equip", 1);
-    html.push_str(&h);
-    push_items(of, "Equipment", rest);
+    let h = list_box(412.6, 383.0, 173.5, 212.0 + ext, 2, 8.0, items, "Equipment", "items not shown");
+    html.push_str(&h.replacen("rp-box list", "rp-box list equip", 1));
     g.value(
         585.4,
-        583.2 + ext,
+        603.2 + ext,
         173.0,
         6.0,
         Anchor::End,
@@ -1899,8 +1826,8 @@ pub fn page2(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         ),
     );
 
-    // Coins: same size, moved to the bottom of the page.
-    g.raw(&format!(r#"<g transform="translate(0 {ext})">"#));
+    // Coins: same size, flush with the bottom of the spell table (764.0).
+    g.raw(&format!(r#"<g transform="translate(0 {})">"#, ext + 19.3));
     right_box(
         &mut g,
         669.5,
