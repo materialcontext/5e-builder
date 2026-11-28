@@ -1547,27 +1547,16 @@ fn scaling(level: u8, base: Option<(u32, u32)>, upcast: Option<(u32, u32)>) -> V
     }
 }
 
-/// Dice right after `needle` in `text`, e.g. "increases by 1d6" → (1, 6).
-fn dice_after(text: &str, needle: &str) -> Option<(usize, (u32, u32))> {
-    let at = text.find(needle)? + needle.len();
-    let tok: String = text[at..].trim_start().chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
-    Some((at, dice(&tok)?))
-}
-
-/// "The damage increases by 1d6 for each spell slot level above 3."
+/// Dice added per slot level, from the sentence that mentions it: "The
+/// damage increases by 1d6 for each spell slot level above 3", "… for every
+/// spell slot level above 1", "For each spell slot level above 3, … the
+/// damage of Venomous Bite increases by 1d6".
 fn upcast_dice(text: &str) -> Option<(u32, u32)> {
-    let mut from = 0;
-    while let Some(i) = text[from..].find("increases by") {
-        let at = from + i;
-        if let Some((end, d)) = dice_after(&text[at..], "increases by") {
-            let rest = &text[at + end..];
-            if rest.get(..60).unwrap_or(rest).contains("for each spell slot level above") {
-                return Some(d);
-            }
-        }
-        from = at + "increases by".len();
-    }
-    None
+    text.split(". ").filter(|s| s.to_lowercase().contains("slot level above")).find_map(|sentence| {
+        sentence
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .find_map(|tok| dice(tok).filter(|_| tok.chars().next().is_some_and(|c| c.is_ascii_digit())))
+    })
 }
 
 /// Hit points a spell restores: "regains a number of Hit Points equal to 2d8
@@ -1766,6 +1755,12 @@ mod parse_tests {
         assert_eq!(upcast_dice(call_lightning), Some((1, 10)));
         assert_eq!(upcast_dice("The healing increases by 2d8 for each spell slot level above 1."), Some((2, 8)));
         assert_eq!(upcast_dice("Its speed increases by 10 feet."), None);
+        // Wordings from Heroes of Faerûn and the Warcraft book.
+        assert_eq!(upcast_dice("The damage increases by 2d4 for every spell slot level above 1."), Some((2, 4)));
+        assert_eq!(upcast_dice("Both the initial and the later damage increase by 1d8 for each spell slot level above 1."), Some((1, 8)));
+        let viper = "For each spell slot level above 3, the number of Temporary Hit Points you gain from this spell increases by 5, and the damage of Venomous Bite increases by 1d6.";
+        assert_eq!(upcast_dice(viper), Some((1, 6)));
+        assert_eq!(upcast_dice("Creatures regain 1d8 additional Hit Points for each spell slot level above 6."), Some((1, 8)));
     }
 
     #[test]
