@@ -554,8 +554,24 @@ fn weapon_proficient(it: &Item, w: &WeaponStats, profs: &[String]) -> bool {
             || p.starts_with(&format!("{cat} weapon"))
             || p == &name
             || p.trim_end_matches('s') == name
-            || (p == "martial weapons with the finesse or light property" && w.martial && w.properties.iter().any(|x| x == "finesse" || x == "light"))
+            || weapon_matches_filter(p, w)
     })
+}
+
+/// "martial weapons with the light or finesse property": the category
+/// matches and the weapon has one of the properties.
+pub fn weapon_matches_filter(label: &str, w: &WeaponStats) -> bool {
+    let label = label.to_lowercase();
+    let Some((kind, rest)) = label.split_once(" weapons with the ") else { return false };
+    let kind_ok = match kind {
+        "martial" => w.martial,
+        "simple" => !w.martial,
+        "melee" => !w.ranged,
+        "ranged" => w.ranged,
+        _ => false,
+    };
+    let props = rest.trim_end_matches(" property").trim_end_matches(" properties");
+    kind_ok && props.split(" or ").any(|p| w.properties.iter().any(|x| x.split('|').next() == Some(p.trim())))
 }
 
 fn attacks(ch: &Character, build: &Build, comp: &Compendium, pb: i32, profs: &[String]) -> Vec<Attack> {

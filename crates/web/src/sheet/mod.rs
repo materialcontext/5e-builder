@@ -45,9 +45,9 @@ pub fn SheetPage(id: String) -> impl IntoView {
     let s = rules::sheet(&ch, &b, &comp);
     let pending = rules::issues(&ch, &b, &comp).len();
     let edit_href = format!("#/edit/{id}/review");
-    let toggle = move |label: &'static str, sig: RwSignal<bool>| {
+    let toggle = move |label: &'static str, hint: &'static str, sig: RwSignal<bool>| {
         view! {
-            <label class="switch">
+            <label class="switch" title=hint>
                 <input type="checkbox" prop:checked=move || sig.get() on:change=move |ev| sig.set(event_target_checked(&ev)) />
                 <span>{label}</span>
             </label>
@@ -57,6 +57,7 @@ pub fn SheetPage(id: String) -> impl IntoView {
     // Pages 1–2 depend on the paper: on longer paper the boxes nearest the
     // bottom grow so the margins stay even all around.
     let (ch1, s1) = (ch.clone(), s.clone());
+    let ch_foundry = ch.clone();
     let replica_pages = move || {
         let ext = replica::extra_height(o.a4.get());
         let mut overflow = Overflow::default();
@@ -83,13 +84,14 @@ pub fn SheetPage(id: String) -> impl IntoView {
                 <a class="brand" href="#/" aria-label="5e Builder — all characters">{logo()}</a>
                 <a class="button ghost small" href="#/">{icon("back")}"Characters"</a>
                 <a class="button ghost small" href=edit_href>"Edit"</a>
+                <button class="button ghost small" title="Actor file for Foundry VTT's D&D 5e system: right-click an actor, Import Data" on:click=move |_| crate::store::download_foundry(&ch_foundry, &comp)>{icon("download")}"Export to Foundry"</button>
                 {(pending > 0).then(|| view! { <span class="chip warn">{format!("{pending} unfinished")}</span> })}
                 <span class="spacer"></span>
                 <div class="switches" role="group" aria-label="Sheet options">
-                    {toggle("Feature text", o.feature_text)}
-                    {toggle("Spell descriptions", o.spell_text)}
-                    {toggle("Grey background (uses more ink)", o.tint)}
-                    {toggle("A4 paper", o.a4)}
+                    {toggle("Feature text", "Add pages with the full text of every feature", o.feature_text)}
+                    {toggle("Spell descriptions", "Add pages with the full text of every spell", o.spell_text)}
+                    {toggle("Grey background", "Tints the page like the printed sheet; uses more ink", o.tint)}
+                    {toggle("A4 paper", "Lay the sheet out for A4 instead of US Letter", o.a4)}
                 </div>
                 <button class="button primary" on:click=move |_| { if let Some(w) = web_sys::window() { let _ = w.print(); } }>{icon("print")}"Print or save PDF"</button>
             </header>

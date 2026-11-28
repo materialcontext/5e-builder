@@ -132,8 +132,41 @@ pub fn tools(o: &Obj, id: &str) -> Vec<Grant> {
 pub fn weapons(o: &Obj, _id: &str) -> Vec<Grant> {
     o.iter()
         .filter(|(k, v)| k.as_str() != "choose" && v.as_bool() != Some(false))
-        .map(|(k, _)| Grant::Prof(Prof::Weapon(name_part(k))))
+        .filter_map(|(k, v)| {
+            // `"all": { "fromFilter": "type=martial weapon|property=light" }`
+            if k == "all" {
+                let filter = v.get("fromFilter").and_then(Value::as_str)?;
+                return Some(Grant::Prof(Prof::Weapon(weapon_filter_label(filter))));
+            }
+            Some(Grant::Prof(Prof::Weapon(name_part(k))))
+        })
         .collect()
+}
+
+/// A 5etools item filter as a proficiency label, e.g.
+/// `type=martial weapon|property=light;finesse` →
+/// "martial weapons with the light or finesse property".
+pub fn weapon_filter_label(filter: &str) -> String {
+    let mut kind = String::from("weapons");
+    let mut props: Vec<String> = Vec::new();
+    for part in filter.split('|') {
+        let Some((k, v)) = part.split_once('=') else { continue };
+        match k.trim() {
+            "type" => {
+                let first = v.split(';').next().unwrap_or("").trim().to_lowercase();
+                if !first.is_empty() {
+                    kind = format!("{first}s");
+                }
+            }
+            "property" => props.extend(v.split(';').map(|p| p.trim().to_lowercase()).filter(|p| !p.is_empty())),
+            _ => {}
+        }
+    }
+    if props.is_empty() {
+        kind
+    } else {
+        format!("{kind} with the {} property", props.join(" or "))
+    }
 }
 
 pub fn armor(o: &Obj, _id: &str) -> Vec<Grant> {

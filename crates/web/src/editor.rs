@@ -1236,6 +1236,9 @@ fn ReviewStep(issues: Memo<Vec<rules::Issue>>) -> impl IntoView {
                 let c = ctx.ch.get_untracked();
                 store::download(&store::file_name(&c), &serde_json::to_string_pretty(&c).unwrap_or_default());
             }>"Export JSON"</button>
+            <button class="button ghost" title="Actor file for Foundry VTT's D&D 5e system" on:click=move |_| {
+                store::download_foundry(&ctx.ch.get_untracked(), &ctx.comp.get_value());
+            }>"Export for Foundry VTT"</button>
             <button class="button ghost" on:click=move |_| go(Route::Home)>"Back to characters"</button>
         </div>
     }

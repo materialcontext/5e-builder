@@ -36,6 +36,19 @@ fn make(
     for _ in 0..4 {
         rules::suggest::fill(&mut ch, comp, None);
     }
+    rules::apply_starting_equipment(&mut ch, comp);
+    // Wear the first armor and shield, wield the weapons.
+    let mut armor = false;
+    let mut shield = false;
+    for it in ch.inventory.iter_mut() {
+        let Some(rec) = it.item.as_ref().and_then(|k| comp.items.get(k)) else { continue };
+        match rec.armor.as_ref().map(|a| a.kind) {
+            Some(compendium::ArmorKind::Shield) if !shield => (it.equipped, shield) = (true, true),
+            Some(k) if k != compendium::ArmorKind::Shield && !armor => (it.equipped, armor) = (true, true),
+            _ if rec.weapon.is_some() => it.equipped = true,
+            _ => {}
+        }
+    }
     let d = &mut ch.details;
     d.alignment = "Neutral Good".into();
     d.age = "142".into();
@@ -82,6 +95,30 @@ fn main() {
             "human|xphb",
             "acolyte|xphb",
             &[("wizard|xphb", 20)],
+        ),
+        make(
+            &comp,
+            "s4",
+            "Vex Thornfield",
+            "tiefling|xphb",
+            "criminal|xphb",
+            &[("barbarian|xphb", 3), ("warlock|xphb", 4)],
+        ),
+        make(
+            &comp,
+            "s5",
+            "Pip Underbough",
+            "halfling|xphb",
+            "hermit|xphb",
+            &[("monk|xphb", 8)],
+        ),
+        make(
+            &comp,
+            "s6",
+            "Grask",
+            "half-orc|phb",
+            "outlander|phb",
+            &[("ranger|phb", 6)],
         ),
     ];
     println!("{}", serde_json::to_string(&chars).expect("json"));

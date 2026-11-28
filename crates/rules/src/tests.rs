@@ -1082,3 +1082,149 @@ fn damage_cantrips_are_listed_with_attacks() {
     assert_eq!(acid.damage, "2d6 acid");
     assert!(!s.attacks.iter().any(|a| a.name == "Mage Hand" || a.name == "Light"), "no damage, no row");
 }
+
+/// Foundry's hit point total for an exported actor: the class items'
+/// HitPoints advancement, plus Constitution per level, plus the bonuses.
+fn foundry_hp(actor: &serde_json::Value, con_mod: i32) -> i32 {
+    let mut total = 0;
+    let mut level = 0;
+    for it in actor["items"].as_array().unwrap().iter().filter(|i| i["type"] == "class") {
+        let hd: i32 = it["system"]["hd"]["denomination"].as_str().unwrap()[1..].parse().unwrap();
+        for adv in it["system"]["advancement"].as_object().unwrap().values() {
+            for v in adv["value"].as_object().unwrap().values() {
+                level += 1;
+                total += match v.as_str() {
+                    Some("max") => hd,
+                    Some("avg") => hd / 2 + 1,
+                    _ => v.as_i64().unwrap() as i32,
+                };
+            }
+        }
+    }
+    let bonus = |k: &str| actor["system"]["attributes"]["hp"]["bonuses"][k].as_str().unwrap().parse::<i32>().unwrap_or(0);
+    total + con_mod * level + bonus("level") * level + bonus("overall")
+}
+
+#[test]
+fn foundry_export_matches_sheet() {
+    let Some(comp) = comp() else { return };
+    let classes: Vec<_> = comp.classes.iter().filter(|c| c.source == "XPHB").map(|c| c.key.clone()).collect();
+    assert!(classes.len() >= 12);
+    for class in classes {
+        for level in [1u8, 7, 20] {
+            let mut ch = hero(class.as_str(), "soldier|xphb", "dwarf|xphb");
+            ch.id = format!("t-{class}-{level}");
+            for _ in 1..level {
+                ch.level_up(class.clone());
+            }
+            autofill(&mut ch, comp);
+            apply_starting_equipment(&mut ch, comp);
+            for it in ch.inventory.iter_mut() {
+                it.equipped = true;
+            }
+            let b = build(&ch, comp);
+            let s = sheet(&ch, &b, comp);
+            let a = crate::foundry::actor(&ch, comp);
+            let what = format!("{class} {level}");
+            // Hit points: Foundry's own total equals the sheet's.
+            assert_eq!(foundry_hp(&a, b.modifier(Ability::Con)), s.hp_max, "{what}");
+            assert_eq!(a["system"]["attributes"]["hp"]["value"], s.hp_max, "{what}");
+            // Ability scores and save proficiencies.
+            for line in &s.abilities {
+                let v = &a["system"]["abilities"][line.ability.abbr().to_lowercase()];
+                assert_eq!(v["value"], line.score, "{what}");
+                assert_eq!(v["proficient"], i32::from(line.save_prof), "{what}");
+            }
+            // Ids: unique, 16 alphanumerics, stable across exports.
+            let items = a["items"].as_array().unwrap();
+            let ids: std::collections::BTreeSet<_> = items.iter().map(|i| i["_id"].as_str().unwrap().to_string()).collect();
+            assert_eq!(ids.len(), items.len(), "{what}");
+            assert!(ids.iter().all(|i| i.len() == 16 && i.chars().all(|c| c.is_ascii_alphanumeric())), "{what}");
+            assert_eq!(a, crate::foundry::actor(&ch, comp), "{what}: export is deterministic");
+            // Links from details point at embedded items.
+            for k in ["race", "background", "originalClass"] {
+                assert!(ids.contains(a["system"]["details"][k].as_str().unwrap()), "{what}: {k}");
+            }
+            // Every spell on the sheet is on the actor.
+            for x in &s.spells {
+                assert!(items.iter().any(|i| i["type"] == "spell" && i["name"] == x.name.as_str()), "{what}: {}", x.name);
+            }
+            // Class item carries the levels and casting progression.
+            let class_item = items.iter().find(|i| i["type"] == "class").unwrap();
+            assert_eq!(class_item["system"]["levels"], level, "{what}");
+        }
+    }
+}
+
+#[test]
+fn foundry_export_details() {
+    let Some(comp) = comp() else { return };
+    // 2024 monk: "Martial weapons that have the Light property" becomes the
+    // base weapons Foundry knows; Unarmored Defense uses the monk formula.
+    let mut ch = hero("monk|xphb", "hermit|xphb", "halfling|xphb");
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    assert!(s.weapon_profs.iter().any(|w| w.to_lowercase() == "martial weapons with the light property"), "{:?}", s.weapon_profs);
+    let a = crate::foundry::actor(&ch, comp);
+    let profs = &a["system"]["traits"]["weaponProf"];
+    assert!(profs["value"].as_array().unwrap().iter().any(|v| v == "scimitar"), "{profs}");
+    assert_eq!(profs["custom"], "", "{profs}");
+    let calcs = a["system"]["attributes"]["ac"]["calcs"].as_array().unwrap();
+    assert!(calcs.iter().any(|c| c == "unarmoredMonk"), "{calcs:?}");
+    assert!(a["system"]["attributes"]["ac"]["override"].is_null());
+
+    // Spells: always prepared, pact magic, and limited free casts.
+    let mut ch = hero("warlock|xphb", "sage|xphb", "tiefling|xphb");
+    for _ in 1..5 {
+        ch.level_up(Key("warlock|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    let a = crate::foundry::actor(&ch, comp);
+    let items = a["items"].as_array().unwrap();
+    let spells: Vec<_> = items.iter().filter(|i| i["type"] == "spell").collect();
+    assert!(spells.iter().any(|s| s["system"]["method"] == "pact" && s["system"]["prepared"] == 1));
+    assert!(spells.iter().all(|s| s["system"]["level"] != 0 || s["system"]["method"] != "pact"));
+    let innate: Vec<_> = spells.iter().filter(|s| s["system"]["method"] == "innate").collect();
+    assert!(!innate.is_empty(), "tiefling legacy spells are innate");
+    for s in &innate {
+        let period = &s["system"]["uses"]["recovery"][0]["period"];
+        assert!(period == "lr" || period == "sr", "{}: {period}", s["name"]);
+        assert_ne!(s["system"]["uses"]["max"], "", "{}", s["name"]);
+        let act = s["system"]["activities"].as_object().unwrap().values().next().unwrap();
+        assert_eq!(act["consumption"]["targets"][0]["type"], "itemUses", "{}", s["name"]);
+    }
+    // Attack cantrips roll their damage dice, scaling with character level.
+    let attack = |s: &&&serde_json::Value| {
+        let act = s["system"]["activities"].as_object().unwrap().values().next().unwrap().clone();
+        (s["system"]["level"] == 0 && act["type"] == "attack").then_some(act)
+    };
+    let act = spells.iter().find_map(|s| attack(&s)).expect("an attack cantrip");
+    let part = &act["damage"]["parts"][0];
+    assert!(part["denomination"].as_u64().unwrap() >= 4, "{act}");
+    assert_eq!(part["scaling"]["mode"], "whole");
+    assert!(!part["types"].as_array().unwrap().is_empty());
+    assert_eq!(a["system"]["spells"]["pact"]["value"], 2);
+    // Invocations are class features with their Foundry subtype.
+    assert!(items.iter().any(|i| i["type"] == "feat" && i["system"]["type"]["subtype"] == "eldritchInvocation"));
+}
+
+#[test]
+fn wizard_subclass_known_spells_go_in_the_spellbook() {
+    let Some(comp) = comp() else { return };
+    let mut ch = hero("wizard|xphb", "sage|xphb", "human|xphb");
+    for _ in 1..10 {
+        ch.level_up(Key("wizard|xphb".into()));
+    }
+    let b = build(&ch, comp);
+    let sub = choice_with(&b, "/subclass");
+    ch.set_choice(&sub.path, vec!["abjurer|xphb|wizard|xphb".into()]);
+    autofill(&mut ch, comp);
+    let b = build(&ch, comp);
+    let savant: Vec<_> = b.spells.iter().filter(|k| k.origin.contains("Abjurer") && k.mode != crate::build::SpellMode::Cantrip).collect();
+    // Spell Breaker: Counterspell and Dispel Magic always prepared.
+    let always: Vec<_> = savant.iter().filter(|k| k.mode == crate::build::SpellMode::AlwaysPrepared).map(|k| k.key.name_part()).collect();
+    assert_eq!(always, ["counterspell", "dispel magic"], "{savant:?}");
+    // Abjuration Savant: free spellbook additions, not always prepared.
+    assert!(savant.iter().filter(|k| k.mode == crate::build::SpellMode::Spellbook).count() >= 4, "{savant:?}");
+}

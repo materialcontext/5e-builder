@@ -12,6 +12,7 @@ A D&D 5e character builder, manager and printable character sheet, written in Ru
 - **Levels 1–20 and multiclassing**, with average or rolled hit points.
 - **Printable sheet**: a faithful replica of the official two-page 2024 character sheet layout, filled in, plus optional pages with full feature and spell text and a continuation page for anything that doesn't fit. Letter or A4 (on A4 the bottom boxes grow so the margins stay even); use the browser's *Print → Save as PDF*.
 - **Character manager**: characters live in the browser (localStorage); duplicate, delete, and import/export JSON.
+- **Foundry VTT export**: "Export for Foundry VTT" (character menu, Review step, sheet toolbar) saves an actor file for the D&D 5e system. See [Foundry VTT](#foundry-vtt).
 - **All content** from the 5etools data, with per-source toggles.
 - **Streamlined**: "choose the rest for me" per step and "pick for me" per choice (skills that use your best abilities, bonuses into your class's primary ability), auto-assign scores for your class, 4d6 rolling, undo/redo (Ctrl+Z), "next unfinished", spell-level and feat-category filters, and "new this level" highlights when levelling up.
 
@@ -92,7 +93,16 @@ feature text was cut down to the selections (and any menus left uncovered).
 
 `cargo run -p rules --example sample_characters -- crates/web/public/compendium.json`
 prints a few fully built characters (multiclass caster, level 20 fighter and
-wizard) in the app's storage format, for checking the printed sheet.
+wizard, barbarian/warlock, monk, legacy ranger) in the app's storage format, for checking the printed sheet.
+
+`cargo run -p rules --example foundry_export -- crates/web/public/compendium.json chars.json out/`
+writes the Foundry actor for each character in a storage-format file.
+The Foundry tests check, for every 2024 class at levels 1, 7 and 20, that
+Foundry's own hit point calculation from the export equals the sheet,
+that ids are unique and stable, and that every spell and link is present.
+`python3 -I tools/foundry_check.py <dnd5e checkout> out/*.foundry.json` checks
+exported files against the dnd5e system's source: every id and type it uses
+must exist in the system's configuration and every field in its data models.
 
 The rules tests run against the generated `compendium.json` when present.
 An audit test checks that every feat/spell/item reference resolves and every
@@ -101,6 +111,48 @@ longer match the data. The other tests
 build characters for every class (levels 1, 5 and 20), every species
 and every background and check that each choice can be satisfied, plus
 hand-checked sheets (wizard, fighter, legacy rogue, cleric/wizard multiclass).
+
+## Foundry VTT
+
+The export uses the data model of Foundry's **D&D 5e system 6.x** (written
+and checked against dnd5e 6.1.2 on Foundry v14). To import:
+
+1. In Foundry, create an actor of type *Character* (any name).
+2. Right-click it in the Actors sidebar → **Import Data** → choose the
+   `<name>.foundry.json` file → *Import*. The actor's data is replaced.
+
+Exporting the same character again gives the same item ids, so importing a
+newer export over the same actor updates it.
+
+What comes across:
+
+- **Actor**: ability scores and save proficiencies, skills (proficiency,
+  expertise, half proficiency), tool proficiencies, speeds, senses, size,
+  languages, armor and weapon proficiencies, weapon masteries, resistances
+  and immunities, hit points, coins, XP, alignment and every Details field.
+- **Items**: class (levels, hit die, spellcasting progression), subclass,
+  species, background, each feature and feat (with full text and the level
+  it was gained), spells, and inventory (weapons with damage and attack,
+  armor and shields, tools, consumables, gear) with equipped/attuned state.
+- **Spells** use Foundry's casting methods: prepared, always prepared,
+  spellbook (not prepared), pact magic, at will, and limited free casts
+  with their uses and recovery (e.g. 1/long rest). Each has an attack,
+  save, damage or utility activity with its damage dice, so it rolls in
+  Foundry. Cantrip damage scales with level.
+
+Foundry computes some numbers itself (AC, hit points, spell slots, save
+DCs). The export is arranged so its result equals this app's sheet: hit
+points per level go in each class's Hit Points advancement and any extra
+(Tough, Dwarven Toughness, …) becomes a bonus, so levelling up in Foundry
+keeps working. AC uses Foundry's formulas (armor, Unarmored Defense,
+Draconic Resilience) and is overridden only when none matches. Proficiencies
+Foundry has no id for are kept as its custom text.
+
+Not included: class advancement tables (levelling up in Foundry adds hit
+points but not new features: add those from Foundry's compendiums or
+re-export), token art, and active effects. Damage that depends on choices
+made in play, and healing amounts, are left for the player to roll from the
+description.
 
 ## Known gaps
 

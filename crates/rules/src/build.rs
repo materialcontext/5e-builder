@@ -877,9 +877,15 @@ impl<'a> Walker<'a> {
                     self.ch.selected(&path).iter().take(*count as usize).map(|s| Key(s.clone())).collect()
                 }
             };
+            // A spellbook class's own "known" spells (e.g. the Abjurer's
+            // Abjuration Savant) go into the spellbook; elsewhere (feats,
+            // species) a known spell is always prepared.
+            let spellbook = ctx.kind == FeatureKind::Class
+                && class.as_ref().and_then(|k| self.comp.classes.get(k)).is_some_and(|c| !c.spellcasting.spellbook.is_empty());
             for key in keys {
                 let mode = match (&mode, self.comp.spells.get(&key)) {
                     (SpellMode::Known, Some(s)) if s.level == 0 => SpellMode::Cantrip,
+                    (SpellMode::Known, _) if spellbook => SpellMode::Spellbook,
                     (SpellMode::Known, _) => SpellMode::AlwaysPrepared,
                     (m, _) => m.clone(),
                 };

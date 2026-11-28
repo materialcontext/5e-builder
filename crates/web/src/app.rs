@@ -200,6 +200,7 @@ fn Home() -> impl IntoView {
                         let pending = rules::issues(&c, &b, &comp).len();
                         let (id1, id2, id3, id4) = (c.id.clone(), c.id.clone(), c.id.clone(), c.id.clone());
                         let c_export = c.clone();
+                        let (c_foundry, comp_foundry) = (c.clone(), comp.clone());
                         let name = s.name.clone();
                         let hue = avatar_hue(&s.class_line);
                         let level_up = (s.level < 20 && !c.levels.is_empty()).then(|| {
@@ -249,6 +250,7 @@ fn Home() -> impl IntoView {
                                                 })
                                             }>"Duplicate"</button>
                                             <button class="menu-item" on:click=move |_| store::download(&store::file_name(&c_export), &serde_json::to_string_pretty(&c_export).unwrap_or_default())>"Export JSON"</button>
+                                            <button class="menu-item" title="Actor file for Foundry VTT's D&D 5e system: right-click an actor, Import Data" on:click=move |_| store::download_foundry(&c_foundry, &comp_foundry)>"Export for Foundry VTT"</button>
                                             <button class="menu-item danger" on:click=move |_| {
                                                 let ok = web_sys::window().and_then(|w| w.confirm_with_message(&format!("Delete {name}? This cannot be undone.")).ok()).unwrap_or(false);
                                                 if ok {

@@ -44,6 +44,12 @@ pub fn update(store: Store, id: &str, f: impl FnOnce(&mut Character)) {
     });
 }
 
+/// Offers the character as a Foundry VTT (dnd5e) actor file. In Foundry:
+/// create an actor, right-click it in the Actors sidebar, "Import Data".
+pub fn download_foundry(c: &Character, comp: &compendium::Compendium) {
+    download(&rules::foundry::file_name(c), &rules::foundry::actor_json(c, comp));
+}
+
 /// Offers `contents` as a file download.
 pub fn download(filename: &str, contents: &str) {
     let Some(window) = web_sys::window() else { return };
