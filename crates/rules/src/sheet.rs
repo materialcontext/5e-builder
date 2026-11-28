@@ -36,8 +36,11 @@ pub struct Attack {
     pub bonus: i32,
     /// For saving-throw spells: the save DC and ability (shown instead of a bonus).
     pub save: Option<(i32, Ability)>,
-    /// Ability the attack or save DC uses (STR, DEX, or a spellcasting ability).
-    pub ability: Ability,
+    /// Ability the attack or save DC uses (STR, DEX, or a spellcasting
+    /// ability); None for the player's own rows.
+    pub ability: Option<Ability>,
+    /// "Action", "Bonus Action" or "Reaction".
+    pub time: String,
     pub proficient: bool,
     /// "5 ft.", "Reach 10 ft.", "80/320 ft.", "120 ft.", "Touch".
     pub range: String,
@@ -47,6 +50,20 @@ pub struct Attack {
     pub damage_type: String,
     /// The line under the attack: properties, versatile damage, mastery, spell notes.
     pub notes: String,
+    /// Written by the player on the Custom step (no numbers to show).
+    pub custom: bool,
+}
+
+/// An entry the player can show, hide or pin on the Custom step.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SheetChoice {
+    /// One of [`crate::play::section`].
+    pub section: &'static str,
+    pub name: String,
+    /// Printed when the player leaves it on Automatic.
+    pub default: bool,
+    /// A short description for the list ("Level 3 spell", "Martial Arts die").
+    pub note: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -135,6 +152,8 @@ pub struct Sheet {
     pub pact_slots: Option<(u8, u8)>,
     pub spells: Vec<SpellLine>,
     pub features: Vec<FeatureEntry>,
+    /// Everything the player can show, hide or pin, per section, with its default.
+    pub choices: Vec<SheetChoice>,
     /// Features and free spells with limited uses, for tracking at the table.
     pub limited: Vec<crate::play::LimitedUse>,
     /// What the character can do with an action, bonus action and reaction.
@@ -392,7 +411,7 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
 
     let initiative = dex + if build.feats.iter().any(|(k, _)| k.0 == "alert|xphb") { pb } else { 0 };
 
-    let attacks = attacks(ch, build, comp, pb, &weapons);
+    let attack_candidates = attacks(ch, build, comp, pb, &weapons);
 
     // Spellcasting.
     let mut casting = Vec::new();
@@ -455,7 +474,53 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
     });
 
     let limited = crate::play::limited_uses(build, comp, &features, pb);
-    let actions = crate::play::actions(ch, build, comp, &features);
+    let action_candidates = crate::play::actions(ch, build, comp, &features);
+    let actions = crate::play::arrange_actions(&action_candidates, &ch.sheet);
+
+    // What the player can edit on the Custom step, with the defaults.
+    use crate::play::section;
+    let mut choices: Vec<SheetChoice> = Vec::new();
+    for (a, default) in &attack_candidates {
+        choices.push(SheetChoice { section: section::WEAPONS, name: a.name.clone(), default: *default, note: a.damage() });
+    }
+    for (sec, list) in [
+        (section::ACTIONS, &action_candidates.action),
+        (section::BONUS_ACTIONS, &action_candidates.bonus),
+        (section::REACTIONS, &action_candidates.reaction),
+    ] {
+        for e in list {
+            let note = if e.spell.is_some() { "spell" } else { "" };
+            choices.push(SheetChoice { section: sec, name: e.name.clone(), default: e.default, note: note.into() });
+        }
+    }
+    let class_names: Vec<String> = build.classes.iter().filter_map(|c| comp.classes.get(&c.key)).map(|c| c.name.clone()).collect();
+    for f in &features {
+        let sec = if in_traits_box(f, &class_names) { section::TRAITS } else { section::CLASS_FEATURES };
+        if f.feature.name.starts_with("Weapon Mastery: ") || choices.iter().any(|c| c.section == sec && c.name == f.feature.name) {
+            continue;
+        }
+        choices.push(SheetChoice { section: sec, name: f.feature.name.clone(), default: true, note: f.origin.clone() });
+    }
+    // Weapons as printed: the player's choices first, then the defaults, then their own rows.
+    let mut attacks = ch.sheet.arrange(section::WEAPONS, attack_candidates, |a: &Attack| a.name.as_str());
+    // The player's own rows go right after their pinned ones, so the four
+    // printed rows never squeeze them out.
+    let at = attacks.iter().take_while(|a| ch.sheet.state(section::WEAPONS, &a.name) == Some(true)).count();
+    for (k, x) in ch.sheet.added(section::WEAPONS).iter().enumerate() {
+        attacks.insert(at + k, Attack {
+            name: x.name.clone(),
+            bonus: 0,
+            save: None,
+            ability: None,
+            time: String::new(),
+            proficient: false,
+            range: String::new(),
+            dice: String::new(),
+            damage_type: String::new(),
+            notes: x.detail.clone(),
+            custom: true,
+        });
+    }
 
     let classes: Vec<ClassSummary> = build
         .classes
@@ -553,6 +618,7 @@ pub fn sheet(ch: &Character, build: &Build, comp: &Compendium) -> Sheet {
         pact_slots: pact,
         spells,
         features,
+        choices,
         limited,
         actions,
         inventory,
@@ -592,14 +658,31 @@ pub fn weapon_matches_filter(label: &str, w: &WeaponStats) -> bool {
     kind_ok && props.split(" or ").any(|p| w.properties.iter().any(|x| x.split('|').next() == Some(p.trim())))
 }
 
-fn attacks(ch: &Character, build: &Build, comp: &Compendium, pb: i32, profs: &[String]) -> Vec<Attack> {
+/// Feats and features that make a character fight with weapons (all their
+/// weapons are worth listing, not just the best one).
+const MARTIAL_FEATURES: &[&str] = &["Weapon Mastery", "Extra Attack", "Fighting Style", "Martial Arts", "Sneak Attack", "Pact of the Blade"];
+const MARTIAL_FEATS: &[&str] = &[
+    "Dual Wielder", "Great Weapon Master", "Polearm Master", "Sharpshooter", "Crossbow Expert", "Savage Attacker", "Charger",
+    "Weapon Master", "Martial Weapon Training", "Mounted Combatant", "Tavern Brawler", "Shield Master", "Piercer", "Slasher", "Crusher",
+];
+
+/// Every attack the character could list, each with whether it is printed
+/// by default: all weapons for martial characters, else only the best one;
+/// Unarmed Strike only when something improves it; every damage cantrip.
+fn attacks(ch: &Character, build: &Build, comp: &Compendium, pb: i32, profs: &[String]) -> Vec<(Attack, bool)> {
     let m = |a: Ability| build.modifier(a);
     let masteries: Vec<String> =
         build.features.iter().filter_map(|f| f.feature.name.strip_prefix("Weapon Mastery: ")).map(|s| s.split(" (").next().unwrap_or("").to_lowercase()).collect();
-    let mut out = Vec::new();
+    let martial = build.features.iter().any(|f| MARTIAL_FEATURES.iter().any(|n| f.feature.name == *n || f.feature.name.starts_with(&format!("{n}:"))))
+        || build.feats.iter().filter_map(|(k, _)| comp.feats.get(k)).any(|f| MARTIAL_FEATS.contains(&f.name.as_str()) || f.category.as_deref().is_some_and(|c| c.starts_with("FS")));
+    let mut weapons: Vec<(Attack, f32)> = Vec::new();
     for inv in &ch.inventory {
         let Some(it) = inv.item.as_ref().and_then(|k| comp.items.get(k)) else { continue };
         let Some(w) = &it.weapon else { continue };
+        // One row per kind of weapon (two daggers are one row).
+        if weapons.iter().any(|(a, _)| a.name == inv.name) {
+            continue;
+        }
         let has = |p: &str| w.properties.iter().any(|x| x.split('|').next() == Some(p));
         let ability = if w.ranged || (has("finesse") && m(Ability::Dex) > m(Ability::Str)) { Ability::Dex } else { Ability::Str };
         let prof = weapon_proficient(it, w, profs);
@@ -637,32 +720,91 @@ fn attacks(ch: &Character, build: &Build, comp: &Compendium, pb: i32, profs: &[S
         if !prof {
             notes.push("Not proficient".into());
         }
-        out.push(Attack {
-            name: inv.name.clone(),
-            bonus,
-            save: None,
-            ability,
-            proficient: prof,
-            range,
-            dice: fmt(&w.damage),
-            damage_type: title_case(&w.damage_type),
-            notes: notes.join(", "),
-        });
+        // For "best weapon": average damage, then to-hit.
+        let score = average(&w.damage) + dmg_mod as f32 + bonus as f32 * 0.01;
+        weapons.push((
+            Attack {
+                name: inv.name.clone(),
+                bonus,
+                save: None,
+                ability: Some(ability),
+                time: "Action".into(),
+                proficient: prof,
+                range,
+                dice: fmt(&w.damage),
+                damage_type: title_case(&w.damage_type),
+                notes: notes.join(", "),
+                custom: false,
+            },
+            score,
+        ));
     }
-    let str_mod = m(Ability::Str);
-    out.push(Attack {
+    let best = weapons.iter().enumerate().max_by(|a, b| a.1 .1.total_cmp(&b.1 .1)).map(|(i, _)| i);
+    let mut out: Vec<(Attack, bool)> = weapons.into_iter().enumerate().map(|(i, (a, _))| (a, martial || Some(i) == best)).collect();
+    // Best weapon first for characters who only show one.
+    if !martial {
+        out.sort_by_key(|(_, shown)| !*shown);
+    }
+    out.extend(damage_cantrips(ch, build, comp, pb).into_iter().map(|a| (a, true)));
+    out.push(unarmed_strike(build, comp, pb));
+    out
+}
+
+/// Average of a damage expression like "2d6" (flat bonuses ignored).
+fn average(dice: &str) -> f32 {
+    match dice.split_once('d') {
+        Some((n, d)) => n.trim().parse::<f32>().unwrap_or(1.0) * (d.trim().parse::<f32>().unwrap_or(0.0) + 1.0) / 2.0,
+        None => dice.trim().parse().unwrap_or(0.0),
+    }
+}
+
+/// Unarmed Strike, printed by default only when something improves it:
+/// Martial Arts (its die and the better of STR or DEX), or a feature that
+/// gives it a die (Unarmed Fighting, Tavern Brawler, claws, horns...).
+fn unarmed_strike(build: &Build, comp: &Compendium, pb: i32) -> (Attack, bool) {
+    let m = |a: Ability| build.modifier(a);
+    let martial_arts = build.classes.iter().find_map(|c| {
+        let class = comp.classes.get(&c.key)?;
+        class.table.iter().find(|t| t.label == "Martial Arts").and_then(|t| t.at(c.level)).map(str::to_string)
+    });
+    // The die named in a sentence about Unarmed Strikes, if any feature has one.
+    let mut improved = martial_arts.is_some();
+    let mut die: Option<(u32, String)> = None;
+    for f in &build.features {
+        let text = Entry::plain(&f.feature.body);
+        for sentence in text.split(". ").filter(|t| t.to_lowercase().contains("unarmed strike")) {
+            improved = true;
+            for tok in sentence.split(|c: char| !c.is_ascii_alphanumeric()) {
+                if let Some((n, d)) = tok.split_once('d') {
+                    if let (Ok(n), Ok(d)) = (n.parse::<u32>(), d.parse::<u32>()) {
+                        if die.as_ref().is_none_or(|(avg, _)| n * (d + 1) > *avg) {
+                            die = Some((n * (d + 1), format!("{n}d{d}")));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let ability = if martial_arts.is_some() && m(Ability::Dex) > m(Ability::Str) { Ability::Dex } else { Ability::Str };
+    let md = m(ability);
+    let dice = match martial_arts.or(die.map(|(_, d)| d)) {
+        Some(d) => format!("{d}{}", if md == 0 { String::new() } else { signed(md) }),
+        None => (1 + md).max(1).to_string(),
+    };
+    let attack = Attack {
         name: "Unarmed Strike".into(),
-        bonus: str_mod + pb,
+        bonus: md + pb,
         save: None,
-        ability: Ability::Str,
+        ability: Some(ability),
+        time: "Action".into(),
         proficient: true,
         range: "5 ft.".into(),
-        dice: (1 + str_mod).max(1).to_string(),
+        dice,
         damage_type: "Bludgeoning".into(),
-        notes: format!("Or Grapple or Shove instead: Str or Dex save, DC {}", 8 + str_mod + pb),
-    });
-    out.extend(damage_cantrips(ch, build, comp, pb));
-    out
+        notes: format!("Or Grapple or Shove instead: Str or Dex save, DC {}", 8 + m(Ability::Str) + pb),
+        custom: false,
+    };
+    (attack, improved)
 }
 
 /// What a weapon mastery does, short enough for one line.
@@ -683,6 +825,9 @@ fn mastery_effect(mastery: &str, dc: i32) -> String {
 impl Attack {
     /// "+5", or "DC 13 DEX" for a saving-throw spell.
     pub fn to_hit(&self) -> String {
+        if self.custom {
+            return String::new();
+        }
         match self.save {
             Some((dc, a)) => format!("DC {dc} {}", a.abbr()),
             None => signed(self.bonus),
@@ -692,6 +837,24 @@ impl Attack {
     /// Dice and type together: "1d8+3 Slashing".
     pub fn damage(&self) -> String {
         format!("{} {}", self.dice, self.damage_type).trim().to_string()
+    }
+}
+
+/// Whether a feature is printed in the Species Traits & Feats box (species
+/// traits, feats, background features, and anything not from a class)
+/// rather than with the class features.
+pub fn in_traits_box(f: &FeatureEntry, class_names: &[String]) -> bool {
+    match f.kind {
+        FeatureKind::Species | FeatureKind::Feat | FeatureKind::Background => true,
+        FeatureKind::Other => f.origin.starts_with("Feat:") || !class_names.iter().any(|c| f.origin.starts_with(c.as_str())),
+        FeatureKind::Class => false,
+    }
+}
+
+impl Sheet {
+    /// See [`in_traits_box`].
+    pub fn in_traits_box(&self, f: &FeatureEntry) -> bool {
+        in_traits_box(f, &self.classes.iter().map(|c| c.name.clone()).collect::<Vec<_>>())
     }
 }
 
@@ -744,16 +907,25 @@ fn damage_cantrips(ch: &Character, build: &Build, comp: &Compendium, pb: i32) ->
         if sp.concentration {
             notes.push("Concentration".into());
         }
+        let time = match crate::play::spell_column(&sp.time) {
+            Some(crate::play::ActionKind::Bonus) => "Bonus Action",
+            Some(crate::play::ActionKind::Reaction) => "Reaction",
+            _ => "Action",
+        };
+        // "Self (15-ft. cone)" → "15-ft. cone": the area is what matters.
+        let range = sp.range.strip_prefix("Self (").and_then(|r| r.strip_suffix(')')).unwrap_or(&sp.range).to_string();
         out.push(Attack {
             name: sp.name.clone(),
             bonus: pb + m,
             save,
-            ability,
+            ability: Some(ability),
+            time: time.into(),
             proficient: true,
-            range: sp.range.clone(),
+            range,
             dice: dice_text.trim().to_string(),
             damage_type: types,
             notes: notes.join(", "),
+            custom: false,
         });
     }
     out

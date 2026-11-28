@@ -10,7 +10,9 @@ A D&D 5e character builder, manager and printable character sheet, written in Ru
 - **Custom step**: before Details, add anything the rules as written don't allow (house rules, DM rewards, homebrew): ability adjustments, proficiencies, languages, any feat or spell, your own features, bonuses to HP, AC or speed. It's applied to every number and printed on the sheet.
 - **Every choice is tracked**: skills, tools, languages, ability score increases, feats and their sub-choices, fighting styles, invocations, weapon masteries, expertise, subclasses, spells, starting equipment. The wizard shows what is still missing on each step.
 - **Levels 1–20 and multiclassing**, with average or rolled hit points.
-- **Page one for the table**: a detailed Weapons & Damage Cantrips table (ability, proficiency, range, attack or save DC, damage, type, and a line with properties and what your weapon mastery does), an Actions box with three columns (actions, bonus actions, reactions) listing features plus "Cast Spell" under actions and the bonus-action and reaction spells by name, filled in a sensible order until full and adjustable per spell on the Custom step (always show / never show), Class Features and Species Traits & Feats side by side, and languages with the other proficiencies.
+- **Page one for the table**: a Weapons & Damage Cantrips table with four rows (what kind of action it takes, ability and proficiency, range, attack or save DC, damage, type, and a line with properties and what your weapon mastery does), an Actions box with three columns (actions, bonus actions, reactions: features, "Cast Spell", and bonus-action and reaction spells), Class Features and Species Traits & Feats side by side, and languages with the other proficiencies. Each feature's action type is read from its own rules text (the first way it says you use it; summons you command get a separate entry), checked across every class, subclass, feat and species.
+- **Your sheet, your way**: on the Custom step, choose what every section shows (Automatic, Always show, Never show), add entries of your own, and edit your appearance and story. By default the weapons box shows every weapon only for characters who fight with weapons (Weapon Mastery, Extra Attack, a fighting style or weapon feat), otherwise the best one, plus damage cantrips; Unarmed Strike only when something improves it (Martial Arts uses its die).
+- **No overflow page**: every box fits its page, shrinking to a readable minimum and then counting what's left; full text is on the optional Features & Traits and Spell Descriptions pages.
 - **Printable sheet**: a faithful replica of the official two-page 2024 character sheet layout, filled in, plus optional pages with full feature and spell text and a continuation page for anything that doesn't fit. Letter or A4 (on A4 the bottom boxes grow so the margins stay even); use the browser's *Print → Save as PDF*.
 - **Character manager**: characters live in the browser (localStorage); duplicate, delete, and import/export JSON.
 - **Foundry VTT export**: "Export for Foundry VTT" (character menu, Review step, sheet toolbar) saves an actor file for the D&D 5e system. See [Foundry VTT](#foundry-vtt).
@@ -104,6 +106,10 @@ wizard, barbarian/warlock, monk, legacy ranger) in the app's storage format, for
 `cargo run -p rules --example play_audit -- crates/web/public/compendium.json 20 xphb`
 lists, for every class and subclass at a level, the limited uses and the
 action / bonus action / reaction lists page one will show.
+
+`cargo run -p rules --example action_audit -- crates/web/public/compendium.json`
+lists every class, subclass and optional feature, feat and species trait
+whose text names more than one kind of action, with how each was classified.
 
 `cargo run -p rules --example foundry_export -- crates/web/public/compendium.json chars.json out/`
 writes the Foundry actor for each character in a storage-format file.

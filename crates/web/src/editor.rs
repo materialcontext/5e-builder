@@ -147,7 +147,7 @@ pub const STEPS: [StepInfo; 11] = [
         step: Step::Custom,
         title: "Custom",
         slug: "custom",
-        intro: "Free control: add anything the rules as written don't allow — house rules, DM rewards, homebrew. Nothing here is checked.",
+        intro: "Free control: add anything the rules as written don't allow, and decide exactly what each part of your sheet shows. Nothing here is checked.",
     },
     StepInfo {
         step: Step::Details,

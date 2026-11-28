@@ -289,79 +289,111 @@ pub fn CustomStep() -> impl IntoView {
         .into_any()
     };
 
-    // ---- which spells go in the sheet's Actions box
-    let action_spells = move || {
+    // ---- what each section of the printed sheet shows
+    let choices = Memo::new(move |_| {
         let comp = ctx.comp.get_value();
-        let prefs = ctx.ch.with(|c| c.action_spells.clone());
-        // (spell key, name, "Level 2")
-        type Row = (String, String, String);
-        let mut groups: [(&str, Vec<Row>); 2] = [("Bonus actions", vec![]), ("Reactions", vec![])];
-        ctx.build.with(|b| {
-            let mut spells: Vec<_> = b
-                .spells
-                .iter()
-                .filter(|k| k.mode != rules::build::SpellMode::Spellbook)
-                .filter_map(|k| comp.spells.get(&k.key).map(|s| (s, k.mode.clone())))
-                .collect();
-            spells.sort_by_key(|(s, mode)| rules::play::spell_rank(s, mode));
-            spells.dedup_by(|a, b| a.0.key == b.0.key);
-            for (s, _) in spells {
-                // One-action spells are a single "Cast Spell" entry on the sheet.
-                let i = match rules::play::spell_column(&s.time) {
-                    Some(rules::play::ActionKind::Bonus) => 0,
-                    Some(rules::play::ActionKind::Reaction) => 1,
-                    _ => continue,
-                };
-                let level = if s.level == 0 { "Cantrip".to_string() } else { format!("Level {}", s.level) };
-                groups[i].1.push((s.key.0.clone(), s.name.clone(), level));
+        ctx.ch.with(|c| ctx.build.with(|b| rules::sheet(c, b, &comp).choices))
+    });
+    let sheet_section = move |sec: &'static str, title: &'static str, hint: &'static str| {
+        let new_name = RwSignal::new(String::new());
+        let new_detail = RwSignal::new(String::new());
+        let rows = move || {
+            let list: Vec<rules::sheet::SheetChoice> = choices.with(|c| c.iter().filter(|x| x.section == sec).cloned().collect());
+            if list.is_empty() {
+                return view! { <p class="muted small">"Nothing here for this character yet."</p> }.into_any();
             }
-        });
-        if groups.iter().all(|(_, v)| v.is_empty()) {
-            return view! { <p class="muted">"No spells cast with a bonus action or reaction yet."</p> }.into_any();
+            list.into_iter()
+                .map(|choice| {
+                    let name = choice.name.clone();
+                    let state = ctx.ch.with(|c| match c.sheet.state(sec, &name) {
+                        Some(true) => "always",
+                        Some(false) => "never",
+                        None => "auto",
+                    });
+                    let by_default = if choice.default { "shown by default" } else { "hidden by default" };
+                    let note = if choice.note.is_empty() { by_default.to_string() } else { format!("{} · {by_default}", choice.note) };
+                    let n = name.clone();
+                    view! {
+                        <li class="action-spell">
+                            <span class="action-spell-name">{name.clone()}<span class="muted small">{format!(" · {note}")}</span></span>
+                            <select aria-label=format!("{name} on the sheet") prop:value=state on:change=move |ev| {
+                                let v = event_target_value(&ev);
+                                let n = n.clone();
+                                ctx.edit(move |c| c.sheet.set(sec, &n, match v.as_str() { "always" => Some(true), "never" => Some(false), _ => None }));
+                            }>
+                                <option value="auto" selected=state == "auto">"Automatic"</option>
+                                <option value="always" selected=state == "always">"Always show"</option>
+                                <option value="never" selected=state == "never">"Never show"</option>
+                            </select>
+                        </li>
+                    }
+                })
+                .collect_view()
+                .into_any()
+        };
+        let own = move || {
+            let added: Vec<rules::SheetEntry> = ctx.ch.with(|c| c.sheet.added(sec).to_vec());
+            added
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    view! {
+                        <li class="action-spell own">
+                            <span class="action-spell-name"><strong>{e.name.clone()}</strong><span class="muted small">{if e.detail.is_empty() { String::new() } else { format!(" — {}", e.detail) }}</span></span>
+                            <button class="button ghost small" aria-label=format!("Remove {}", e.name) on:click=move |_| ctx.edit(move |c| {
+                                if let Some(v) = c.sheet.added.get_mut(sec) {
+                                    if i < v.len() { v.remove(i); }
+                                    if v.is_empty() { c.sheet.added.remove(sec); }
+                                }
+                            })>"Remove"</button>
+                        </li>
+                    }
+                })
+                .collect_view()
+        };
+        let add = move |_| {
+            let name = new_name.get_untracked().trim().to_string();
+            if name.is_empty() {
+                return;
+            }
+            let detail = new_detail.get_untracked().trim().to_string();
+            ctx.edit(move |c| c.sheet.added.entry(sec.to_string()).or_default().push(rules::SheetEntry { name, detail }));
+            new_name.set(String::new());
+            new_detail.set(String::new());
+        };
+        view! {
+            <section class="sheet-section">
+                <h3 class="action-spell-group">{title}</h3>
+                <p class="muted small">{hint}</p>
+                <ul class="action-spells">{rows}{own}</ul>
+                <div class="row custom-add">
+                    <input type="text" placeholder="Add your own entry" aria-label=format!("New entry for {title}")
+                        prop:value=move || new_name.get() on:input=move |ev| new_name.set(event_target_value(&ev)) />
+                    <input type="text" placeholder="Details (optional)" aria-label=format!("Details for the new {title} entry")
+                        prop:value=move || new_detail.get() on:input=move |ev| new_detail.set(event_target_value(&ev)) />
+                    <button class="button" disabled=move || new_name.get().trim().is_empty() on:click=add>{icon("plus")}"Add"</button>
+                </div>
+            </section>
         }
-        groups
-            .into_iter()
-            .filter(|(_, v)| !v.is_empty())
-            .map(|(title, rows)| {
-                let rows = rows
-                    .into_iter()
-                    .map(|(key, name, level)| {
-                        let state = match prefs.get(&key) {
-                            Some(true) => "always",
-                            Some(false) => "never",
-                            None => "auto",
-                        };
-                        let k = key.clone();
-                        view! {
-                            <li class="action-spell">
-                                <span class="action-spell-name">{name.clone()}<span class="muted small">{format!(" · {level}")}</span></span>
-                                <select aria-label=format!("{name} in the Actions box") prop:value=state on:change=move |ev| {
-                                    let v = event_target_value(&ev);
-                                    let k = k.clone();
-                                    ctx.edit(move |c| match v.as_str() {
-                                        "always" => { c.action_spells.insert(k, true); }
-                                        "never" => { c.action_spells.insert(k, false); }
-                                        _ => { c.action_spells.remove(&k); }
-                                    });
-                                }>
-                                    <option value="auto" selected=state == "auto">"Automatic"</option>
-                                    <option value="always" selected=state == "always">"Always show"</option>
-                                    <option value="never" selected=state == "never">"Never show"</option>
-                                </select>
-                            </li>
-                        }
-                    })
-                    .collect_view();
-                view! { <h3 class="action-spell-group">{title}</h3><ul class="action-spells">{rows}</ul> }
-            })
-            .collect_view()
-            .into_any()
+    };
+    type Get = fn(&rules::Details) -> String;
+    type Set = fn(&mut rules::Details, String);
+    let text_field = move |label: &'static str, get: Get, set: Set, area: bool| {
+        let input = if area {
+            view! { <textarea rows="3" prop:value=move || ctx.ch.with(|c| get(&c.details))
+                on:input=move |ev| { let v = event_target_value(&ev); ctx.edit(|c| set(&mut c.details, v)) }></textarea> }.into_any()
+        } else {
+            view! { <input type="text" prop:value=move || ctx.ch.with(|c| get(&c.details))
+                on:input=move |ev| { let v = event_target_value(&ev); ctx.edit(|c| set(&mut c.details, v)) } /> }.into_any()
+        };
+        view! { <label class="field"><span>{label}</span>{input}</label> }
     };
 
     view! {
         <div class="note custom-intro">
             <p><strong>"This page is for anything the rules as written don't cover."</strong></p>
             <p>"Use it for house rules, rewards from your DM, homebrew, or any change you want to make by hand: adjust ability scores, add proficiencies, languages, feats, spells or your own features, or give bonuses to hit points, Armor Class or speed. Nothing here is checked against the rules — what you add is applied to your character as is, and printed on your sheet."</p>
+            <p>"Further down, “Your sheet” lets you choose exactly what each box of the printed sheet shows (weapons, actions, features), add entries of your own, and edit your appearance and story."</p>
         </div>
 
         <h2>"Added so far"</h2>
@@ -423,9 +455,36 @@ pub fn CustomStep() -> impl IntoView {
         </label>
         {move || view! { <div class="record-list">{option_list(spell_items, vec![], 1, add_spell, spell_state, "custom-spells")}</div> }}
 
-        <h2>"Spells in the Actions box"</h2>
-        <p class="muted">"Page one lists what you can do with an action, a bonus action and a reaction. Spells cast with an action appear there as one entry, Cast Spell; spells cast with a bonus action or a reaction are listed by name. Space is limited, so those columns fill in order: spells you set to always show, then your features, then other spells (free casts first, then spells that attack, force a save, deal damage or heal, strongest first, then the rest). Spells that don't fit are counted, and all of them are on the spell page. They're listed here in that order."</p>
-        {action_spells}
+        <h2>"Your sheet"</h2>
+        <p class="muted">"Choose exactly what each part of the printed sheet shows. Automatic follows the rules and your choices so far; Always show puts an entry first so it's never squeezed out; Never show leaves it off. You can also add entries of your own. Boxes have limited space: when they're full, what's left is counted and the full text is on the Features & Traits and spell pages."</p>
+        {sheet_section(rules::play::section::WEAPONS, "Weapons & Damage Cantrips", "Page one has four rows. By default: every weapon if you fight with weapons (Weapon Mastery, Extra Attack, a fighting style or weapon feat), otherwise just your best one; your damage cantrips; and Unarmed Strike only if something improves it.")}
+        {sheet_section(rules::play::section::ACTIONS, "Actions", "Spells cast with an action appear as one entry, Cast Spell; set a spell to Always show to name it too.")}
+        {sheet_section(rules::play::section::BONUS_ACTIONS, "Bonus Actions", "Features first, then spells (free casts, then spells that attack, force a save, deal damage or heal, strongest first).")}
+        {sheet_section(rules::play::section::REACTIONS, "Reactions", "")}
+        {sheet_section(rules::play::section::CLASS_FEATURES, "Class Features", "")}
+        {sheet_section(rules::play::section::TRAITS, "Species Traits & Feats", "")}
+
+        <h3 class="action-spell-group">"Appearance and story"</h3>
+        <p class="muted small">"The same details as the Details step: change them here or there."</p>
+        <div class="field-grid">
+            {text_field("Alignment", |d| d.alignment.clone(), |d, v| d.alignment = v, false)}
+            {text_field("Pronouns", |d| d.pronouns.clone(), |d, v| d.pronouns = v, false)}
+            {text_field("Age", |d| d.age.clone(), |d, v| d.age = v, false)}
+            {text_field("Height", |d| d.height.clone(), |d, v| d.height = v, false)}
+            {text_field("Weight", |d| d.weight.clone(), |d, v| d.weight = v, false)}
+            {text_field("Eyes", |d| d.eyes.clone(), |d, v| d.eyes = v, false)}
+            {text_field("Hair", |d| d.hair.clone(), |d, v| d.hair = v, false)}
+            {text_field("Skin", |d| d.skin.clone(), |d, v| d.skin = v, false)}
+            {text_field("Faith", |d| d.faith.clone(), |d, v| d.faith = v, false)}
+        </div>
+        {text_field("Appearance", |d| d.appearance.clone(), |d, v| d.appearance = v, true)}
+        {text_field("Personality traits", |d| d.personality.clone(), |d, v| d.personality = v, true)}
+        {text_field("Ideals", |d| d.ideals.clone(), |d, v| d.ideals = v, true)}
+        {text_field("Bonds", |d| d.bonds.clone(), |d, v| d.bonds = v, true)}
+        {text_field("Flaws", |d| d.flaws.clone(), |d, v| d.flaws = v, true)}
+        {text_field("Backstory", |d| d.backstory.clone(), |d, v| d.backstory = v, true)}
+        {text_field("Allies & organizations", |d| d.allies.clone(), |d, v| d.allies = v, true)}
+        {text_field("Notes", |d| d.notes.clone(), |d, v| d.notes = v, true)}
 
         <h2>"Your own features"</h2>
         <p class="muted">"Anything else — a boon, a curse, a magic tattoo, a house rule. It's printed with your feats and traits."</p>

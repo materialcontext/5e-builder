@@ -994,13 +994,14 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
     );
     g.title_rule(226.7, 182.2, 360.1);
     // Two lines per attack: the roll on top, what to remember below.
-    const COLS: [(f32, f32, &str); 6] = [
-        (228.2, 96.0, "Name"),
-        (327.0, 23.0, "Abil."),
-        (353.5, 62.0, "Range"),
-        (418.0, 38.0, "Atk / DC"),
-        (459.0, 50.0, "Damage"),
-        (512.0, 73.5, "Type"),
+    const COLS: [(f32, f32, &str); 7] = [
+        (228.2, 84.0, "Name"),
+        (314.5, 26.0, "Use"),
+        (343.0, 23.0, "Abil."),
+        (369.5, 52.0, "Range"),
+        (424.0, 36.0, "Atk / DC"),
+        (462.5, 48.0, "Damage"),
+        (513.0, 72.5, "Type"),
     ];
     for (x, w, t) in COLS {
         g.text(x, 194.3, Font::Column, Anchor::Start, None, t);
@@ -1013,18 +1014,25 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
     const MIN_NOTE: f32 = 5.6;
     for (i, y) in rows.iter().enumerate() {
         g.field(228.2, *y, 357.3);
-        for x in [325.6, 352.2, 416.8, 457.5, 510.5] {
+        for x in [313.3, 341.8, 368.3, 422.8, 461.3, 511.8] {
             g.vline(x, y - 17.2, 9.6, 0.5, DIVIDER);
         }
         let Some(a) = s.attacks.get(i) else { continue };
         let bl = y - 9.4;
-        g.value_min(228.6, bl, 95.0, 7.8, MIN_VALUE, Anchor::Start, &a.name);
-        g.diamond(330.8, bl - 2.4, 2.1, 0.5, a.proficient);
-        g.value_min(334.8, bl, 16.0, 6.6, MIN_VALUE, Anchor::Start, a.ability.abbr());
-        g.value_min(353.9, bl, 61.5, 6.8, MIN_VALUE, Anchor::Start, &a.range);
-        g.value_min(437.0, bl, 38.0, 7.8, MIN_VALUE, Anchor::Middle, &a.to_hit());
-        g.value_min(459.4, bl, 49.5, 7.6, MIN_VALUE, Anchor::Start, &a.dice);
-        g.value_min(512.4, bl, 73.0, 7.2, MIN_VALUE, Anchor::Start, &a.damage_type);
+        g.value_min(228.6, bl, 83.0, 7.8, MIN_VALUE, Anchor::Start, &a.name);
+        if !a.custom {
+            let used = match a.time.as_str() {
+                "Bonus Action" => "Bonus",
+                other => other,
+            };
+            g.value_min(314.9, bl, 25.5, 6.6, MIN_VALUE, Anchor::Start, used);
+            g.diamond(346.8, bl - 2.4, 2.1, 0.5, a.proficient);
+            g.value_min(350.8, bl, 16.0, 6.6, MIN_VALUE, Anchor::Start, a.ability.map(|x| x.abbr()).unwrap_or(""));
+            g.value_min(369.9, bl, 51.5, 6.8, MIN_VALUE, Anchor::Start, &a.range);
+            g.value_min(442.0, bl, 36.0, 7.6, MIN_VALUE, Anchor::Middle, &a.to_hit());
+            g.value_min(462.9, bl, 47.5, 7.6, MIN_VALUE, Anchor::Start, &a.dice);
+            g.value_min(513.4, bl, 72.0, 7.2, MIN_VALUE, Anchor::Start, &a.damage_type);
+        }
         g.note(228.6, y - 2.2, 356.5, 6.2, MIN_NOTE, &a.notes);
     }
 
@@ -1052,14 +1060,9 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
     // Class features and species traits & feats, side by side to the bottom.
     // Class options (maneuvers, invocations…) sit with class features unless a
     // feat granted them. Repeats (Indomitable at 9/13/17, several ASIs) merge.
-    let in_feats_box = |f: &rules::build::FeatureEntry| match f.kind {
-        FeatureKind::Feat | FeatureKind::Background => true,
-        FeatureKind::Other => {
-            f.origin.starts_with("Feat:")
-                || !s.classes.iter().any(|c| f.origin.starts_with(&c.name))
-        }
-        _ => false,
-    };
+    let in_feats_box = |f: &rules::build::FeatureEntry| f.kind != FeatureKind::Species && s.in_traits_box(f);
+    let edits = &ch.sheet;
+    use rules::play::section;
     let feature_items = |pick: &dyn Fn(&rules::build::FeatureEntry) -> bool, count: bool| -> Vec<Item> {
         let mut out: Vec<(Item, (usize, bool))> = Vec::new();
         for f in s.features.iter().filter(|f| pick(f)) {
@@ -1093,9 +1096,20 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
     g.text(322.6, top + 12.2, Font::Head, Anchor::Middle, None, "CLASS FEATURES");
     g.grid(222.6, top + 18.4, 200.0, height - 18.4);
     g.title_rule(226.7, top + 18.4, 191.8);
-    let class_items = feature_items(
-        &|f| matches!(f.kind, FeatureKind::Class | FeatureKind::Other) && !in_feats_box(f),
-        false,
+    // The player's edits: hidden entries go, pinned ones and their own
+    // entries come first.
+    let edited = |sec: &str, items: Vec<Item>| -> Vec<Item> {
+        let base = |i: &Item| i.name.split(" ×").next().unwrap_or("").to_string();
+        let items = items.into_iter().map(|i| (i, true)).collect();
+        let mut out = edits.arrange(sec, items, |i: &Item| i.name.split(" ×").next().unwrap_or(""));
+        let pinned = out.iter().take_while(|i| edits.state(sec, &base(i)) == Some(true)).count();
+        let own = edits.added(sec).iter().map(|x| Item { name: x.name.clone(), tag: String::new(), detail: x.detail.clone() });
+        out.splice(pinned..pinned, own);
+        out
+    };
+    let class_items = edited(
+        section::CLASS_FEATURES,
+        feature_items(&|f| matches!(f.kind, FeatureKind::Class | FeatureKind::Other) && !in_feats_box(f), false),
     );
     html.push_str(&list_box(228.0, top + 21.5, 189.4, height - 24.5, 1, 0.0, class_items, "Class features", "see the Features & Traits pages"));
 
@@ -1124,6 +1138,7 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
         }
     }
     traits.extend(feature_items(&|f| in_feats_box(f), true));
+    let traits = edited(section::TRAITS, traits);
     html.push_str(&list_box(438.8, top + 21.5, 147.0, height - 24.5, 1, 0.0, traits, "Species traits and feats", "see the Features & Traits pages"));
 
     // Equipment training & proficiencies, with languages.

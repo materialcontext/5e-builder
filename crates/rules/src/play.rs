@@ -51,13 +51,51 @@ pub struct ActionEntry {
     pub name: String,
     /// The spell, for spells (features and other actions have none).
     pub spell: Option<compendium::Key>,
-    /// The player asked for this spell to always be shown.
+    /// The player asked for this entry to always be shown.
     pub pinned: bool,
+    /// Shown unless the player says otherwise (one-action spells aren't:
+    /// "Cast Spell" stands for them).
+    pub default: bool,
+    /// Written by the player on the Custom step.
+    pub custom: bool,
 }
 
 impl ActionEntry {
     fn feature(name: &str) -> Self {
-        ActionEntry { name: name.to_string(), spell: None, pinned: false }
+        ActionEntry { name: name.to_string(), spell: None, pinned: false, default: true, custom: false }
+    }
+}
+
+/// Names of the sheet sections the player can edit (keys of
+/// [`crate::character::SheetEdits`]).
+pub mod section {
+    pub const WEAPONS: &str = "weapons";
+    pub const ACTIONS: &str = "actions";
+    pub const BONUS_ACTIONS: &str = "bonus actions";
+    pub const REACTIONS: &str = "reactions";
+    pub const CLASS_FEATURES: &str = "class features";
+    pub const TRAITS: &str = "species traits & feats";
+}
+
+/// Applies the player's edits to the candidate entries: never-shown ones go,
+/// always-shown ones come first, then the player's own entries, then the rest
+/// in their default order.
+pub fn arrange_actions(candidates: &Actions, edits: &crate::character::SheetEdits) -> Actions {
+    let column = |list: &[ActionEntry], sec: &str| {
+        let items = list.iter().map(|e| (e.clone(), e.default)).collect();
+        let mut out = edits.arrange(sec, items, |e: &ActionEntry| e.name.as_str());
+        let pinned = out.iter().take_while(|e| edits.state(sec, &e.name) == Some(true)).count();
+        for e in out.iter_mut().take(pinned) {
+            e.pinned = true;
+        }
+        let own = edits.added(sec).iter().map(|x| ActionEntry { name: x.name.clone(), spell: None, pinned: true, default: true, custom: true });
+        out.splice(pinned..pinned, own);
+        out
+    };
+    Actions {
+        action: column(&candidates.action, section::ACTIONS),
+        bonus: column(&candidates.bonus, section::BONUS_ACTIONS),
+        reaction: column(&candidates.reaction, section::REACTIONS),
     }
 }
 
@@ -403,6 +441,14 @@ fn number_word(w: &str) -> Option<i32> {
     })
 }
 
+fn column_mut(a: &mut Actions, kind: ActionKind) -> &mut Vec<ActionEntry> {
+    match kind {
+        ActionKind::Action => &mut a.action,
+        ActionKind::Bonus => &mut a.bonus,
+        ActionKind::Reaction => &mut a.reaction,
+    }
+}
+
 /// What the character can do with an action, a bonus action and a reaction:
 /// features by their rules text, spells by casting time.
 pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[FeatureEntry]) -> Actions {
@@ -418,16 +464,12 @@ pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[Fea
         if name.starts_with("Weapon Mastery") || matches!(name, "Spellcasting" | "Pact Magic" | "Extra Attack" | "Ability Score Improvement") {
             continue;
         }
-        let t = Entry::plain(&f.feature.body).to_lowercase();
-        let (action, bonus, reaction) = action_kinds(&t);
-        if bonus {
-            push(&mut a.bonus, ActionEntry::feature(name));
+        let act = activation(&Entry::plain(&f.feature.body));
+        for kind in act.primary.into_iter().chain(act.also.iter().copied()) {
+            push(column_mut(&mut a, kind), ActionEntry::feature(name));
         }
-        if reaction {
-            push(&mut a.reaction, ActionEntry::feature(name));
-        }
-        if action && !bonus && !reaction {
-            push(&mut a.action, ActionEntry::feature(name));
+        if let Some(kind) = act.command {
+            push(column_mut(&mut a, kind), ActionEntry::feature(&format!("{name} (command)")));
         }
     }
     // Two Light weapons: the extra attack (2024 Light property) is a Bonus Action.
@@ -442,65 +484,142 @@ pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[Fea
     }
     push(&mut a.reaction, ActionEntry::feature("Opportunity Attack"));
 
-    // Spells the character can cast now (not spellbook-only), by casting time.
-    // One-action spells are a single "Cast Spell" entry (the spell page lists
-    // them); bonus-action and reaction spells are named: pinned ones first,
-    // then after the features in the default order.
-    let mut casts_spells = false;
+    // Spells the character can cast now (not spellbook-only), by casting
+    // time, in the default order. One-action spells are candidates for the
+    // Action column but hidden by default: "Cast Spell" stands for them.
     let mut spells: Vec<(&compendium::Spell, &SpellMode)> = Vec::new();
     for k in build.spells.iter().filter(|k| k.mode != SpellMode::Spellbook) {
         let Some(s) = comp.spells.get(&k.key) else { continue };
-        if spell_column(&s.time) == Some(ActionKind::Action) {
-            casts_spells = true;
-            continue;
+        if !spells.iter().any(|(x, _)| x.key == s.key) {
+            spells.push((s, &k.mode));
         }
-        if ch.action_spells.get(k.key.as_str()) == Some(&false) || spells.iter().any(|(x, _)| x.key == s.key) {
-            continue;
-        }
-        spells.push((s, &k.mode));
     }
     spells.sort_by_key(|(s, mode)| spell_rank(s, mode));
-    let mut pinned = Actions::default();
+    let mut casts_spells = false;
     for (s, _) in spells {
         let Some(kind) = spell_column(&s.time) else { continue };
-        let is_pinned = ch.action_spells.get(s.key.as_str()) == Some(&true);
-        let e = ActionEntry { name: s.name.clone(), spell: Some(s.key.clone()), pinned: is_pinned };
-        let (target, pin_target) = match kind {
-            ActionKind::Action => continue,
-            ActionKind::Bonus => (&mut a.bonus, &mut pinned.bonus),
-            ActionKind::Reaction => (&mut a.reaction, &mut pinned.reaction),
-        };
-        if is_pinned {
-            pin_target.push(e);
-        } else {
-            push(target, e);
+        let e = ActionEntry { name: s.name.clone(), spell: Some(s.key.clone()), pinned: false, default: kind != ActionKind::Action, custom: false };
+        match kind {
+            ActionKind::Action => {
+                casts_spells = true;
+                push(&mut a.action, e);
+            }
+            ActionKind::Bonus => push(&mut a.bonus, e),
+            ActionKind::Reaction => push(&mut a.reaction, e),
         }
     }
     if casts_spells {
         a.action.insert(0, ActionEntry::feature("Cast Spell"));
     }
-    for (list, pins) in [(&mut a.bonus, pinned.bonus), (&mut a.reaction, pinned.reaction)] {
-        let rest = std::mem::take(list);
-        let pinned_names: Vec<String> = pins.iter().map(|p| p.name.clone()).collect();
-        *list = pins;
-        list.extend(rest.into_iter().filter(|e| !pinned_names.contains(&e.name)));
-    }
     a
 }
 
-/// Which kinds of action a feature's text says it uses.
-fn action_kinds(t: &str) -> (bool, bool, bool) {
+/// How a feature is used, read from its rules text.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Activation {
+    /// The action it takes: the first activation phrase in the text ("As a
+    /// Magic action, you…", "you can take a Reaction to…"). Later phrases
+    /// describe follow-ups or other creatures.
+    pub primary: Option<ActionKind>,
+    /// A summon or effect you command with a different action ("you can take
+    /// a Bonus Action on your turn to command it").
+    pub command: Option<ActionKind>,
+    /// Other actions the feature also lets you take (Polearm Master: a bonus
+    /// action attack and a reaction attack).
+    pub also: Vec<ActionKind>,
+    /// Every activation phrase found, by position (for audits).
+    pub found: Vec<(usize, ActionKind, &'static str)>,
+}
+
+const ACTIVATIONS: &[(&str, ActionKind)] = &[
+    ("as a bonus action", ActionKind::Bonus),
+    ("take a bonus action", ActionKind::Bonus),
+    ("use a bonus action", ActionKind::Bonus),
+    ("use your bonus action", ActionKind::Bonus),
+    ("a bonus action on each", ActionKind::Bonus),
+    ("take a reaction", ActionKind::Reaction),
+    ("use your reaction", ActionKind::Reaction),
+    ("use a reaction", ActionKind::Reaction),
+    ("as a reaction", ActionKind::Reaction),
+    ("your reaction", ActionKind::Reaction),
+    ("as a magic action", ActionKind::Action),
+    ("take a magic action", ActionKind::Action),
+    ("take the magic action", ActionKind::Action),
+    ("as an action", ActionKind::Action),
+    ("use your action", ActionKind::Action),
+    ("use an action", ActionKind::Action),
+    ("take an action to", ActionKind::Action),
+    ("as a utilize action", ActionKind::Action),
+];
+
+/// Reads how a feature is used from its (lowercase) rules text.
+pub fn activation(t: &str) -> Activation {
     // Phrases that name an action without using one ("a spell that doesn't
     // require a Reaction to cast", "you can't take Reactions").
-    let mut t = t.to_string();
-    for negated in ["doesn't require a reaction", "don't require a reaction", "can't take reactions", "can't take a reaction", "no action required"] {
-        t = t.replace(negated, "");
+    let mut t = t.to_lowercase();
+    for negated in ["doesn't require a reaction", "don't require a reaction", "can't take reactions", "can't take a reaction", "no action required", "doesn't require an action", "requires no action"] {
+        t = t.replace(negated, &" ".repeat(negated.len()));
     }
-    let has = |phrases: &[&str]| phrases.iter().any(|p| t.contains(p));
-    let bonus = has(&["as a bonus action", "take a bonus action", "use a bonus action", "use your bonus action", "bonus action to", "a bonus action on each"]);
-    let reaction = has(&["take a reaction", "use your reaction", "use a reaction", "as a reaction", "reaction to", "your reaction"]);
-    let action = has(&["as a magic action", "take a magic action", "take the magic action", "as an action", "use your action", "use an action", "take an action to", "as a utilize action"]);
-    (action, bonus, reaction)
+    let mut found: Vec<(usize, ActionKind, &'static str)> = Vec::new();
+    for (p, kind) in ACTIVATIONS {
+        for (i, _) in t.match_indices(p) {
+            if !found.iter().any(|(j, ..)| *j == i) {
+                found.push((i, *kind, p));
+            }
+        }
+    }
+    found.sort_by_key(|f| f.0);
+    let after = |i: usize, p: &str| {
+        let end = (i + p.len() + 60).min(t.len());
+        let end = (end..=t.len()).find(|&e| t.is_char_boundary(e)).unwrap_or(t.len());
+        t[i..end].to_string()
+    };
+    let before = |i: usize, n: usize| {
+        let start = (0..=i.saturating_sub(n)).rev().find(|&b| t.is_char_boundary(b)).unwrap_or(0);
+        t[start..i].to_string()
+    };
+    // Commanding a summon or moving an effect ("take a Bonus Action on your
+    // turn to command it", "to cause the cannon to activate", "move the spirit").
+    let is_command = |i: usize, p: &str| {
+        let w = after(i, p);
+        ["command it", "command the familiar", "command your familiar", "command the drake", "to activate", "move the spirit", "move the illusion", "move the cube", "move the echo"]
+            .iter()
+            .any(|k| w.contains(k))
+    };
+    // Housekeeping that isn't how the feature is used.
+    let is_minor = |i: usize, p: &str| {
+        let w = after(i, p);
+        let b = before(i, 60);
+        ["dismiss", "revive", "retract", "doff", "end it", "end the ", "to leave"].iter().any(|k| w.contains(k))
+            || ["has died", "if it dies", "has been destroyed", "retract", "end it", "end this effect", "dismiss"].iter().any(|k| b.contains(k))
+    };
+    // "When you use your action to cast a cantrip, …": a condition, not a use.
+    // "Rather than as an action" compares; "…, or take the Magic action" is
+    // an option inside another action (Fast Hands).
+    let is_condition = |i: usize| {
+        let b = before(i, 16);
+        b.ends_with("when you ") || b.ends_with("whenever you ") || b.ends_with("rather than ") || b.ends_with("or ")
+    };
+    // Someone else's action ("your mount can take a Reaction", "each target
+    // can …", "on its turns it can only … take a bonus action").
+    let is_others = |i: usize| {
+        let b = format!(" {}", before(i, 32));
+        let sentence_start = t[..i].rfind(". ").map(|j| j + 2).unwrap_or(0);
+        let sentence = format!(" {}", &t[sentence_start..i]);
+        [" it can", " they can", " ally can", " target can", " wielder can", " mount can", " creature can", " allies can", " familiar must"].iter().any(|k| b.contains(k))
+            || [" on its turn", " on their turn", " the target can", " each target", " the creature can"].iter().any(|k| sentence.contains(k))
+    };
+    let own: Vec<&(usize, ActionKind, &'static str)> =
+        found.iter().filter(|(i, _, p)| !is_command(*i, p) && !is_minor(*i, p) && !is_condition(*i) && !is_others(*i)).collect();
+    let primary = own.first().map(|f| f.1);
+    let mut also: Vec<ActionKind> = Vec::new();
+    for f in &own {
+        if Some(f.1) != primary && !also.contains(&f.1) {
+            also.push(f.1);
+        }
+    }
+    let command = found.iter().find(|(i, kind, p)| is_command(*i, p) && Some(*kind) != primary && !also.contains(kind)).map(|f| f.1);
+    Activation { primary, command, also, found }
 }
 
 #[cfg(test)]
@@ -567,11 +686,31 @@ mod tests {
 
     #[test]
     fn action_types_from_text() {
-        assert_eq!(action_kinds("you can enter your rage as a bonus action"), (false, true, false));
-        assert_eq!(action_kinds("when an attacker hits you, you can take a reaction to halve the damage"), (false, false, true));
-        assert_eq!(action_kinds("as a magic action, you present your holy symbol"), (true, false, false));
-        assert_eq!(action_kinds("you have resistance to poison damage"), (false, false, false));
-        let di = "as a magic action, choose any cleric spell of level 5 or lower that doesn't require a reaction to cast.";
-        assert_eq!(action_kinds(di), (true, false, false));
+        let p = |t: &str| activation(t).primary;
+        assert_eq!(p("You can enter your Rage as a Bonus Action"), Some(ActionKind::Bonus));
+        assert_eq!(p("When an attacker hits you, you can take a Reaction to halve the damage"), Some(ActionKind::Reaction));
+        assert_eq!(p("As a Magic action, you present your Holy Symbol"), Some(ActionKind::Action));
+        assert_eq!(p("You have Resistance to Poison damage"), None);
+        let di = "As a Magic action, choose any Cleric spell of level 5 or lower that doesn't require a Reaction to cast.";
+        assert_eq!(p(di), Some(ActionKind::Action));
+        // The first phrase is the feature's own; a later one commands a summon.
+        let spirit = "As a Magic action, you can expend a use of your Wild Shape to summon your Wildfire Spirit. In combat, the spirit takes its turn immediately after yours. It can move and use its Reaction on its own, but the only action it takes is the Dodge action, unless you take a Bonus Action on your turn to command it to take another action.";
+        let a = activation(spirit);
+        assert_eq!(a.primary, Some(ActionKind::Action));
+        assert_eq!(a.command, Some(ActionKind::Bonus));
+        // A condition on another action is not the feature's own action.
+        let war = "When you use your action to cast a cantrip, you can make one weapon attack as a bonus action.";
+        assert_eq!(p(war), Some(ActionKind::Bonus));
+        // Several real uses: listed in each column.
+        let polearm = "You can use a bonus action to make a melee attack with the opposite end of the weapon. While you are wielding a Quarterstaff, you can take a Reaction to make one melee attack against a creature that enters your reach.";
+        let a = activation(polearm);
+        assert_eq!((a.primary, a.also.clone()), (Some(ActionKind::Bonus), vec![ActionKind::Reaction]));
+        // Someone else's reaction doesn't count.
+        let ally = "As a Bonus Action, choose up to three creatures. Each target can immediately take a Reaction to right itself.";
+        assert_eq!(activation(ally).also, vec![]);
+        // A summon you command.
+        let defender = "It acts during your turn. The only action it takes is the Dodge action unless you take a Bonus Action to command it to take an action. If the defender has died within the last hour, you can take a Magic action to touch it.";
+        let a = activation(defender);
+        assert_eq!((a.primary, a.command), (None, Some(ActionKind::Bonus)));
     }
 }

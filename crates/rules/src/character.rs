@@ -34,9 +34,8 @@ pub struct Character {
     /// rewards, homebrew): ability adjustments, proficiencies, feats, spells,
     /// features, bonuses. Applied like any other grant, labelled "Custom".
     pub custom: Vec<compendium::Grant>,
-    /// Spells the player always wants (true) or never wants (false) in the
-    /// sheet's Actions box, by spell key. Others are placed automatically.
-    pub action_spells: BTreeMap<String, bool>,
+    /// The player's edits to what the printed sheet shows.
+    pub sheet: SheetEdits,
     pub created: String,
     pub updated: String,
 }
@@ -60,10 +59,72 @@ impl Default for Character {
             starting_signature: String::new(),
             starting_coins_cp: 0,
             custom: Vec::new(),
-            action_spells: BTreeMap::new(),
+            sheet: SheetEdits::default(),
             created: String::new(),
             updated: String::new(),
         }
+    }
+}
+
+/// What the player changed about the printed sheet, per section (see
+/// [`crate::play::section`]): entries to always show (placed first) or
+/// never show, and entries of their own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SheetEdits {
+    /// Section → entry name → true (always show, first) or false (never show).
+    pub show: BTreeMap<String, BTreeMap<String, bool>>,
+    /// Section → entries the player wrote.
+    pub added: BTreeMap<String, Vec<SheetEntry>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SheetEntry {
+    pub name: String,
+    pub detail: String,
+}
+
+impl SheetEdits {
+    /// Some(true): always show; Some(false): never; None: automatic.
+    pub fn state(&self, section: &str, name: &str) -> Option<bool> {
+        self.show.get(section).and_then(|m| m.get(name)).copied()
+    }
+
+    pub fn set(&mut self, section: &str, name: &str, state: Option<bool>) {
+        let m = self.show.entry(section.to_string()).or_default();
+        match state {
+            Some(v) => {
+                m.insert(name.to_string(), v);
+            }
+            None => {
+                m.remove(name);
+            }
+        }
+        if m.is_empty() {
+            self.show.remove(section);
+        }
+    }
+
+    pub fn added(&self, section: &str) -> &[SheetEntry] {
+        self.added.get(section).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// Orders a section's candidates as the sheet prints them: always-shown
+    /// first, then those shown by default; never-shown and hidden-by-default
+    /// ones are dropped. `items` pairs each entry with whether it shows by default.
+    pub fn arrange<T>(&self, section: &str, items: Vec<(T, bool)>, name: impl Fn(&T) -> &str) -> Vec<T> {
+        let (mut pinned, mut rest) = (Vec::new(), Vec::new());
+        for (item, default) in items {
+            match self.state(section, name(&item)) {
+                Some(true) => pinned.push(item),
+                Some(false) => {}
+                None if default => rest.push(item),
+                None => {}
+            }
+        }
+        pinned.extend(rest);
+        pinned
     }
 }
 

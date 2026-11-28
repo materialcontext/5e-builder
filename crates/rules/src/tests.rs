@@ -2,6 +2,7 @@
 
 use crate::*;
 use crate::play::Actions;
+use crate::character::SheetEntry;
 use compendium::{Ability, Compendium, Key, Options, Prof, Skill};
 use std::sync::OnceLock;
 
@@ -1298,12 +1299,17 @@ fn every_class_has_sane_table_aids() {
 #[test]
 fn detailed_weapon_rows() {
     let Some((_, s)) = leveled("fighter|xphb", None, 5) else { return };
-    let unarmed = s.attacks.iter().find(|a| a.name == "Unarmed Strike").unwrap();
-    assert!(unarmed.notes.contains("Grapple or Shove"), "{unarmed:?}");
-    for a in s.attacks.iter().filter(|a| a.name != "Unarmed Strike") {
+    // A fighter lists every weapon they carry, all as actions.
+    assert!(s.attacks.len() >= 2, "{:?}", s.attacks.iter().map(|a| &a.name).collect::<Vec<_>>());
+    for a in &s.attacks {
         assert!(a.proficient, "fighters are proficient with every weapon: {a:?}");
         assert!(!a.damage_type.is_empty(), "{a:?}");
+        assert_eq!(a.time, "Action");
     }
+    // Plain Unarmed Strike isn't printed, but can be chosen.
+    assert!(!s.attacks.iter().any(|a| a.name == "Unarmed Strike"));
+    let choice = s.choices.iter().find(|c| c.section == crate::play::section::WEAPONS && c.name == "Unarmed Strike").unwrap();
+    assert!(!choice.default);
     // A weapon chosen for Weapon Mastery shows what its mastery does.
     let comp = comp().unwrap();
     let (mut ch, _) = leveled("fighter|xphb", None, 5).unwrap();
@@ -1340,12 +1346,63 @@ fn spells_in_the_actions_box() {
     // The player can pin a spell to the top of its column or hide it.
     let last = spells.last().unwrap().key.clone();
     let hidden = spells.first().unwrap().key.clone();
-    ch.action_spells.insert(last.0.clone(), true);
-    ch.action_spells.insert(hidden.0.clone(), false);
+    let name = |k: &Key| comp.spells.get(k).unwrap().name.clone();
+    ch.sheet.set(crate::play::section::BONUS_ACTIONS, &name(&last), Some(true));
+    ch.sheet.set(crate::play::section::BONUS_ACTIONS, &name(&hidden), Some(false));
     let b = build(&ch, comp);
     let s = sheet(&ch, &b, comp);
     let bonus = col(&s);
     assert_eq!(bonus[0].spell.as_ref(), Some(&last), "pinned first: {:?}", Actions::names(&bonus));
     assert!(bonus[0].pinned);
     assert!(!bonus.iter().any(|e| e.spell.as_ref() == Some(&hidden)), "hidden: {:?}", Actions::names(&bonus));
+}
+
+#[test]
+fn weapon_defaults() {
+    let Some(comp) = comp() else { return };
+    // A monk's Unarmed Strike uses the Martial Arts die and the better of STR or DEX.
+    let (_, monk) = leveled("monk|xphb", None, 5).unwrap();
+    let u = monk.attacks.iter().find(|a| a.name == "Unarmed Strike").expect("monk unarmed strike");
+    assert!(u.dice.starts_with("1d8"), "{u:?}");
+    let m = |a: Ability| monk.abilities.iter().find(|l| l.ability == a).unwrap().modifier;
+    let better = if m(Ability::Dex) > m(Ability::Str) { Ability::Dex } else { Ability::Str };
+    assert_eq!(u.ability, Some(better));
+    // A wizard (no martial features) shows only the best weapon, then cantrips.
+    // (Sage, not Soldier: the Soldier's Savage Attacker is a weapon feat.)
+    let mut ch = hero("wizard|xphb", "sage|xphb", "human|xphb");
+    for _ in 1..5 {
+        ch.level_up(Key("wizard|xphb".into()));
+    }
+    autofill(&mut ch, comp);
+    apply_starting_equipment(&mut ch, comp);
+    ch.inventory.push(InventoryItem { item: Some(Key("light crossbow|xphb".into())), name: "Light Crossbow".into(), qty: 1, equipped: false, attuned: false, starting: false, notes: String::new() });
+    let b = build(&ch, comp);
+    let wiz = sheet(&ch, &b, comp);
+    let weapons: Vec<_> = wiz.attacks.iter().filter(|a| a.time == "Action" && comp.spells.iter().all(|s| s.name != a.name)).collect();
+    assert_eq!(weapons.len(), 1, "{:?}", wiz.attacks.iter().map(|a| &a.name).collect::<Vec<_>>());
+    let hidden: Vec<_> = wiz.choices.iter().filter(|c| c.section == crate::play::section::WEAPONS && !c.default).map(|c| c.name.clone()).collect();
+    assert!(!hidden.is_empty());
+    // The player can show another weapon (first) and add their own row.
+    ch.sheet.set(crate::play::section::WEAPONS, &hidden[0], Some(true));
+    ch.sheet.added.entry(crate::play::section::WEAPONS.into()).or_default().push(SheetEntry { name: "Sling bullets".into(), detail: "20 left".into() });
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    assert_eq!(s.attacks[0].name, hidden[0]);
+    let own = &s.attacks[1];
+    assert!(own.custom && own.to_hit().is_empty() && own.notes == "20 left", "{own:?}");
+}
+
+#[test]
+fn produce_flame_is_a_bonus_action_attack() {
+    let Some(comp) = comp() else { return };
+    let (mut ch, _) = leveled("druid|xphb", None, 5).unwrap();
+    let b = build(&ch, comp);
+    let c = b.choices.iter().find(|c| c.path.ends_with("/cantrips")).unwrap().clone();
+    let mut picks = vec!["produce flame|xphb".to_string()];
+    picks.extend(c.selected.iter().filter(|v| !v.starts_with("produce flame")).take(c.count as usize - 1).cloned());
+    ch.set_choice(&c.path, picks);
+    let b = build(&ch, comp);
+    let s = sheet(&ch, &b, comp);
+    let pf = s.attacks.iter().find(|a| a.name == "Produce Flame").expect("produce flame");
+    assert_eq!(pf.time, "Bonus Action");
 }
