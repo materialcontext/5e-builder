@@ -127,10 +127,12 @@ fn summary(body: &[Entry]) -> String {
 }
 
 /// Estimated height of `items` set at `size` in columns of width `w`.
-fn list_height(items: &[Item], size: f32, w: f32, details: bool, cols: usize) -> f32 {
+/// `details`: how many entries, from the top, show their description.
+fn list_height(items: &[Item], size: f32, w: f32, details: usize, cols: usize) -> f32 {
     let line = size * 1.17;
     let mut lines = 0.0;
-    for it in items {
+    for (i, it) in items.iter().enumerate() {
+        let details = i < details;
         let mut t = it.name.clone();
         if !it.tag.is_empty() {
             t.push_str("  ");
@@ -148,25 +150,32 @@ fn list_height(items: &[Item], size: f32, w: f32, details: bool, cols: usize) ->
 
 /// Chooses the largest type size (and whether descriptions fit) for a list
 /// box; returns how many items can be shown.
-fn fit_list(items: &[Item], w: f32, h: f32, cols: usize, max: f32) -> (f32, bool, usize) {
-    let sizes = [7.5, 7.25, 7.0, 6.75, 6.5, 6.25, 6.0, 5.75, 5.5];
-    for details in [true, false] {
-        for &s in sizes.iter().filter(|s| **s <= max) {
-            if list_height(items, s, w, details, cols) <= h {
-                return (s, details, items.len());
-            }
+/// Size, number of entries with descriptions, and number of entries shown.
+/// Prefers everything with descriptions; otherwise every name, with
+/// descriptions for as many entries from the top as fit; otherwise as many
+/// names as fit. Never below MIN_TEXT.
+fn fit_list(items: &[Item], w: f32, h: f32, cols: usize, max: f32) -> (f32, usize, usize) {
+    let n = items.len();
+    for &s in [8.5, 8.25, art::MIN_TEXT].iter().filter(|s| **s <= max) {
+        if list_height(items, s, w, n, cols) <= h {
+            return (s, n, n);
         }
     }
-    let mut n = items.len();
-    while n > 0 && list_height(&items[..n], 5.5, w, false, cols) + 8.0 > h {
-        n -= 1;
+    let min = art::MIN_TEXT;
+    if let Some(k) = (0..n).rev().find(|&k| list_height(items, min, w, k, cols) <= h) {
+        return (min, k, n);
     }
-    (5.5, false, n)
+    let mut shown = n;
+    while shown > 0 && list_height(&items[..shown], min, w, 0, cols) + 10.0 > h {
+        shown -= 1;
+    }
+    (min, 0, shown)
 }
 
-fn list_html(items: &[Item], details: bool, more: usize, more_note: &str) -> String {
+fn list_html(items: &[Item], details: usize, more: usize, more_note: &str) -> String {
     let mut o = String::new();
-    for it in items {
+    for (i, it) in items.iter().enumerate() {
+        let details = i < details;
         o.push_str("<p><b>");
         o.push_str(&esc(&it.name));
         o.push_str("</b>");
@@ -202,7 +211,7 @@ fn list_box(
     more_note: &str,
 ) -> String {
     let col_w = (w - gap * (cols as f32 - 1.0)) / cols as f32;
-    let (size, details, n) = fit_list(&items, col_w, h, cols, 7.5);
+    let (size, details, n) = fit_list(&items, col_w, h, cols, 8.5);
     let more = items.len() - n;
     let inner = list_html(&items[..n], details, more, more_note);
     let class = if cols > 1 { "list cols" } else { "list" };
@@ -255,14 +264,14 @@ fn text_box(
             })
             .collect()
     };
-    for s in [8.0, 7.5, 7.0, 6.5, 6.0, 5.5] {
+    for s in [8.5, 8.0] {
         if height(s, &paras) <= h {
             return html_box(x, y, w, h, s, "text", &render(&paras), label);
         }
     }
     // Keep whole paragraphs that fit, then as many words of the next as fit.
     let mut n = paras.len();
-    while n > 0 && height(5.5, &paras[..n]) > h {
+    while n > 0 && height(art::MIN_TEXT, &paras[..n]) > h {
         n -= 1;
     }
     let mut kept: Vec<(&str, String)> = paras[..n].to_vec();
@@ -272,14 +281,14 @@ fn text_box(
         while k > 0 {
             let mut trial = kept.clone();
             trial.push((l, format!("{}…", words[..k].join(" "))));
-            if height(5.5, &trial) <= h {
+            if height(art::MIN_TEXT, &trial) <= h {
                 kept = trial;
                 break;
             }
             k -= 1;
         }
     }
-    html_box(x, y, w, h, 5.5, "text", &render(&kept), label)
+    html_box(x, y, w, h, art::MIN_TEXT, "text", &render(&kept), label)
 }
 
 // ------------------------------------------------------------------ helpers
@@ -998,10 +1007,10 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
         (228.2, 84.0, "Name"),
         (314.5, 26.0, "Use"),
         (343.0, 23.0, "Abil."),
-        (369.5, 52.0, "Range"),
-        (424.0, 36.0, "Atk / DC"),
-        (462.5, 48.0, "Damage"),
-        (513.0, 72.5, "Type"),
+        (369.5, 50.0, "Range"),
+        (422.0, 44.0, "Atk / DC"),
+        (468.5, 44.0, "Damage"),
+        (515.0, 70.5, "Type"),
     ];
     for (x, w, t) in COLS {
         g.text(x, 194.3, Font::Column, Anchor::Start, None, t);
@@ -1010,11 +1019,11 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
     // Four attacks on the page (the Custom step chooses which).
     let rows = [212.6, 232.1, 251.5, 271.0];
     // Never smaller than these (in sheet units, ~1pt): long text is cut with "…".
-    const MIN_VALUE: f32 = 6.6;
-    const MIN_NOTE: f32 = 5.6;
+    const MIN_VALUE: f32 = art::MIN_TEXT;
+    const MIN_NOTE: f32 = art::MIN_LABEL;
     for (i, y) in rows.iter().enumerate() {
         g.field(228.2, *y, 357.3);
-        for x in [313.3, 341.8, 368.3, 422.8, 461.3, 511.8] {
+        for x in [313.3, 341.8, 368.3, 420.8, 467.3, 513.8] {
             g.vline(x, y - 17.2, 9.6, 0.5, DIVIDER);
         }
         let Some(a) = s.attacks.get(i) else { continue };
@@ -1023,17 +1032,18 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
         if !a.custom {
             let used = match a.time.as_str() {
                 "Bonus Action" => "Bonus",
+                "Reaction" => "React.",
                 other => other,
             };
             g.value_min(314.9, bl, 25.5, 6.6, MIN_VALUE, Anchor::Start, used);
             g.diamond(346.8, bl - 2.4, 2.1, 0.5, a.proficient);
             g.value_min(350.8, bl, 16.0, 6.6, MIN_VALUE, Anchor::Start, a.ability.map(|x| x.abbr()).unwrap_or(""));
-            g.value_min(369.9, bl, 51.5, 6.8, MIN_VALUE, Anchor::Start, &a.range);
-            g.value_min(442.0, bl, 36.0, 7.6, MIN_VALUE, Anchor::Middle, &a.to_hit());
-            g.value_min(462.9, bl, 47.5, 7.6, MIN_VALUE, Anchor::Start, &a.dice);
-            g.value_min(513.4, bl, 72.0, 7.2, MIN_VALUE, Anchor::Start, &a.damage_type);
+            g.value_min(369.9, bl, 50.0, 8.0, MIN_VALUE, Anchor::Start, &a.range);
+            g.value_min(444.0, bl, 44.0, 8.0, MIN_VALUE, Anchor::Middle, &a.to_hit());
+            g.value_min(468.9, bl, 44.0, 8.0, MIN_VALUE, Anchor::Start, &a.dice);
+            g.value_min(515.4, bl, 70.0, 8.0, MIN_VALUE, Anchor::Start, &a.damage_type);
         }
-        g.note(228.6, y - 2.2, 356.5, 6.2, MIN_NOTE, &a.notes);
+        g.note(228.6, y - 2.2, 356.5, 7.8, MIN_NOTE, &a.notes);
     }
 
     // Actions: what the character can do with each kind of action.
@@ -1201,7 +1211,7 @@ pub fn page1(ch: &Character, s: &Sheet, ext: f32) -> Page {
 /// below a readable size. Up to six entries are one per line; more flow as
 /// a paragraph ending with a count of what didn't fit. Spells are in italics.
 fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::ActionEntry], label: &str) -> String {
-    const MIN: f32 = 6.6;
+    const MIN: f32 = art::MIN_TEXT;
     let name_html = |e: &rules::play::ActionEntry| if e.spell.is_some() { format!("<i>{}</i>", esc(&e.name)) } else { esc(&e.name) };
     // "+3 more (spell page)", "+1 more (Features & Traits)"
     let more_note = |rest: &[&&rules::play::ActionEntry]| {
@@ -1219,7 +1229,7 @@ fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::Action
     let lines_h = |lines: f32, size: f32| (lines + 0.25) * size * 1.17;
     // One per line.
     if entries.len() <= 6 {
-        for size in [7.5, 7.0, MIN] {
+        for size in [8.5, MIN] {
             let lines: f32 = entries.iter().map(|e| (text_width(&e.name, size) / w).ceil().max(1.0)).sum();
             if lines_h(lines, size) <= h {
                 let inner: String = entries.iter().map(|e| format!("<p>{}</p>", name_html(e))).collect();
@@ -1238,7 +1248,7 @@ fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::Action
         t.join(", ")
     };
     let fits = |k: usize, size: f32| lines_h((text_width(&para(k), size) / w).ceil().max(1.0), size) <= h;
-    let (size, k) = [7.5, 7.0, MIN]
+    let (size, k) = [8.5, MIN]
         .into_iter()
         .find_map(|size| fits(entries.len(), size).then_some((size, entries.len())))
         .unwrap_or_else(|| (MIN, (0..=entries.len()).rev().find(|&k| fits(k, MIN)).unwrap_or(0)));
@@ -1258,14 +1268,21 @@ fn short_time(t: &str) -> String {
     let first = t.split(',').next().unwrap_or("").trim();
     match first {
         "1 action" => "Action".into(),
-        "1 bonus action" => "Bonus Action".into(),
-        "1 reaction" => "Reaction".into(),
+        "1 bonus action" => "Bonus".into(),
+        "1 reaction" => "React.".into(),
         _ => first
             .replace(" minutes", " min")
             .replace(" minute", " min")
             .replace(" hours", " hr")
             .replace(" hour", " hr"),
     }
+}
+
+/// "Self (30-ft. sphere)" → "30-ft. sph.": the area is what matters, and the
+/// column is narrow (the spell descriptions have the full range).
+fn short_range(r: &str) -> String {
+    let area = r.strip_prefix("Self (").and_then(|x| x.strip_suffix(')')).unwrap_or(r);
+    area.replace("emanation", "eman.").replace("sphere", "sph.").replace("cylinder", "cyl.").replace("radius", "rad.")
 }
 
 fn short_duration(d: &str) -> String {
@@ -1640,7 +1657,7 @@ pub fn page2(ch: &Character, s: &Sheet, ext: f32) -> Page {
         s.spells.iter().partition(|x| x.status != "Book");
     list.extend(book);
     let area = rows as f32 * 19.44;
-    let pitch = if list.len() > rows { (area / list.len() as f32).max(13.0) } else { 19.44 };
+    let pitch = if list.len() > rows { (area / list.len() as f32).max(14.0) } else { 19.44 };
     let fit_rows = (area / pitch + 0.01).floor() as usize;
     let k = pitch / 19.44;
     let shown = if list.len() > fit_rows { fit_rows - 1 } else { list.len() };
@@ -1670,10 +1687,11 @@ pub fn page2(ch: &Character, s: &Sheet, ext: f32) -> Page {
         }
         let bl = y - 3.0 * k.max(0.8);
         if let Some(sp) = sp {
-            g.value_min(27.75, bl, 20.0, small(7.5, 6.2), 6.2, Anchor::Middle, &if sp.level == 0 { "Cantrip".to_string() } else { sp.level.to_string() });
+            // Cantrips are level 0 (the column is too narrow for the word).
+            g.value_min(27.75, bl, 20.0, small(7.5, 6.2), 6.2, Anchor::Middle, &sp.level.to_string());
             g.value_min(42.8, bl, 107.0, small(7.8, 6.6), 6.6, Anchor::Start, &sp.name);
             g.value_min(155.0, bl, 29.0, small(6.5, 6.0), 6.0, Anchor::Start, &short_time(&sp.time));
-            g.value_min(189.0, bl, 40.8, small(6.5, 6.0), 6.0, Anchor::Start, &sp.range);
+            g.value_min(189.0, bl, 40.8, small(6.5, 6.0), 6.0, Anchor::Start, &short_range(&sp.range));
             g.value_min(305.4, bl, 85.0, small(6.2, 6.0), 6.0, Anchor::Start, &spell_note(sp, s));
         } else if i == shown && list.len() > shown {
             let more = list.len() - shown;

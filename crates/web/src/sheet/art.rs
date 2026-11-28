@@ -40,6 +40,18 @@ pub enum Font {
 }
 
 impl Font {
+    /// CSS font size of the class (style.css, `.rp-art`), for width estimates.
+    fn size(self) -> f32 {
+        match self {
+            Font::Head => 8.0,
+            Font::Label => 9.0,
+            Font::LabelSmall => 7.8,
+            Font::Text | Font::TextBold => 8.0,
+            Font::Column => 7.6,
+            Font::Faint => 7.6,
+        }
+    }
+
     fn class(self) -> &'static str {
         match self {
             Font::Head => "h",
@@ -88,6 +100,12 @@ pub fn esc(s: &str) -> String {
 
 /// Rough advance width of `s` in Alegreya Sans at `size`, used to shrink
 /// values that would overflow their field.
+/// Smallest size for filled-in content (values, list entries), in sheet
+/// units: about 7.5pt on A4 (1 unit = 0.94pt), 7.7pt on Letter.
+pub const MIN_TEXT: f32 = 8.0;
+/// Smallest size for captions and secondary lines: about 7pt on A4.
+pub const MIN_LABEL: f32 = 7.5;
+
 pub fn text_width(s: &str, size: f32) -> f32 {
     s.chars()
         .map(|c| match c {
@@ -181,7 +199,11 @@ impl Svg {
             Anchor::Middle => r#" text-anchor="middle""#,
             Anchor::End => r#" text-anchor="end""#,
         };
+        // A fixed width (matching the reference sheet) only spreads text out;
+        // if the text is wider than that at our size, let it take its width
+        // rather than squeezing the letters together.
         let l = len
+            .filter(|l| text_width(s, font.size()) <= *l * 1.02)
             .map(|l| format!(r#" textLength="{l}" lengthAdjust="spacing""#))
             .unwrap_or_default();
         let _ = write!(
@@ -194,26 +216,7 @@ impl Svg {
 
     /// A filled-in value, shrunk to fit `w` (never below `min`).
     pub fn value(&mut self, x: f32, y: f32, w: f32, size: f32, anchor: Anchor, s: &str) {
-        if s.is_empty() {
-            return;
-        }
-        let sz = fit(s, size, w, size.min(5.0));
-        let a = match anchor {
-            Anchor::Start => "",
-            Anchor::Middle => r#" text-anchor="middle""#,
-            Anchor::End => r#" text-anchor="end""#,
-        };
-        // Below the minimum size, squeeze horizontally as a last resort.
-        let squeeze = if text_width(s, sz) > w * 1.02 {
-            format!(r#" textLength="{w}" lengthAdjust="spacingAndGlyphs""#)
-        } else {
-            String::new()
-        };
-        let _ = write!(
-            self.0,
-            r#"<text x="{x}" y="{y}" class="v"{a}{squeeze} style="font-size:{sz:.2}px">{}</text>"#,
-            esc(s)
-        );
+        self.value_min(x, y, w, size, MIN_TEXT, anchor, s);
     }
 
     /// A secondary line under a value (grey italic): properties, notes.
@@ -222,6 +225,7 @@ impl Svg {
         if s.is_empty() {
             return;
         }
+        let (size, min) = (size.max(MIN_LABEL), min.max(MIN_LABEL));
         let sz = fit(s, size, w, min);
         let t = clip(s, sz, w);
         let _ = write!(self.0, r#"<text x="{x}" y="{y}" class="note" style="font-size:{sz:.2}px">{}</text>"#, esc(&t));
@@ -234,6 +238,7 @@ impl Svg {
         if s.is_empty() {
             return;
         }
+        let (size, min) = (size.max(MIN_TEXT), min.max(MIN_TEXT));
         let sz = fit(s, size, w, min);
         let t = clip(s, sz, w);
         let a = match anchor {

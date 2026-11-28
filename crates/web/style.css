@@ -513,14 +513,14 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .rp { position: relative; width: calc(603 * var(--u)); height: calc(774 * var(--u)); }
 .rp-art-wrap, .rp-art-wrap > svg, .rp-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
 .rp-overlay { pointer-events: none; }
-.rp-art text { fill: var(--rp-ink); font-family: "Alegreya Sans", "Inter", sans-serif; font-size: 7.5px; }
+.rp-art text { fill: var(--rp-ink); font-family: "Alegreya Sans", "Inter", sans-serif; font-size: 8px; }
 .rp-art .h { font-weight: 700; font-size: 8px; letter-spacing: .01em; }
 .rp-art .sc { font-family: "Alegreya Sans SC", "Alegreya Sans", sans-serif; font-weight: 500; font-size: 9px; }
-.rp-art .sc.sm { font-size: 7.5px; }
-.rp-art .t { font-size: 7.5px; }
+.rp-art .sc.sm { font-size: 7.8px; }
+.rp-art .t { font-size: 8px; }
 .rp-art .b { font-weight: 700; }
-.rp-art .col { font-size: 7px; fill: #6d6e71; }
-.rp-art .faint { font-size: 7.5px; fill: #858384; }
+.rp-art .col { font-size: 7.6px; fill: #5d5e61; }
+.rp-art .faint { font-size: 7.6px; fill: #6f6d6e; }
 .rp-art .v { font-weight: 500; fill: var(--rp-val); }
 .rp-art .note { font-style: italic; fill: #4a4747; }
 .rp-art .title { font-weight: 700; letter-spacing: .08em; fill: var(--rp-ink); }
@@ -532,7 +532,7 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .rp-box b { font-weight: 700; }
 /* On paper a tag is plain italic text: the app's pill (border, background,
    padding) prints as a smudge at this size. */
-.rp-box .tag { font-size: .88em; color: #3d3a3a; font-style: italic; border: 0; background: none; padding: 0; border-radius: 0; white-space: normal; line-height: inherit; }
+.rp-box .tag { font-size: .95em; color: #3d3a3a; font-style: italic; border: 0; background: none; padding: 0; border-radius: 0; white-space: normal; line-height: inherit; }
 .rp-box .d { color: #2c2929; }
 .rp-box .more { font-style: italic; color: #5f5c5c; }
 .rp-box.cols { column-count: 2; column-fill: auto; }
@@ -561,8 +561,8 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .rp-entry h4 { font: 700 calc(8.8 * var(--u)) "Alegreya Sans", sans-serif; margin: 0 0 calc(1 * var(--u)); break-after: avoid; }
 .rp-entry p, .rp-entry li { margin: calc(1.5 * var(--u)) 0; orphans: 3; widows: 3; }
 .rp-entry ul { margin: calc(2 * var(--u)) 0; padding-left: calc(12 * var(--u)); }
-.rp-origin { font: italic 400 calc(7.4 * var(--u)) "Alegreya Sans", sans-serif; color: #5f5c5c; margin-left: calc(5 * var(--u)); }
-.rp-meta { font-size: calc(7.4 * var(--u)); color: #5f5c5c; }
+.rp-origin { font: italic 400 calc(8 * var(--u)) "Alegreya Sans", sans-serif; color: #5f5c5c; margin-left: calc(5 * var(--u)); }
+.rp-meta { font-size: calc(8 * var(--u)); color: #4f4c4c; }
 .rp-flow p { margin: 0 0 calc(2 * var(--u)); }
 .rp-flow .tag { font-style: italic; color: #5f5c5c; font-size: .85em; }
 .rp-list { margin: 0; padding-left: calc(12 * var(--u)); }
@@ -570,7 +570,7 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
    width (its heading stays on top) and let long tables continue on the next
    printed page with their column headings repeated. */
 .rp-single .rp-group { margin-bottom: calc(8 * var(--u)); }
-.rp-table { width: 100%; border-collapse: collapse; font-size: calc(7.6 * var(--u)); break-inside: auto; }
+.rp-table { width: 100%; border-collapse: collapse; font-size: calc(8 * var(--u)); break-inside: auto; }
 .rp-table thead { display: table-header-group; }
 .rp-table tr { break-inside: avoid; }
 .rp-table th { text-align: left; font-weight: 400; color: #6d6e71; border-bottom: calc(.5 * var(--u)) solid #b2b1b1; padding: calc(1 * var(--u)) calc(3 * var(--u)); }
@@ -578,7 +578,7 @@ table.abilities .mod { font-weight: 700; color: var(--accent); }
 .rp-table .c { text-align: center; }
 .rp-table .strong { font-weight: 700; }
 .rp-table abbr { text-decoration: none; }
-.sheet .entry-table { font-size: calc(7.4 * var(--u)); }
+.sheet .entry-table { font-size: calc(8 * var(--u)); }
 .sheet .entry-table td, .sheet .entry-table th { border-color: #b2b1b1; }
 
 @media print {
