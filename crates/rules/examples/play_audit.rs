@@ -42,9 +42,9 @@ fn main() {
                 let n = if u.unit.is_empty() { u.uses.to_string() } else { format!("{} {}", u.uses, u.unit) };
                 println!("   use  {:34} {:>8}  {:12} {}", u.name, n, u.recharge, u.note);
             }
-            println!("   A: {}", s.actions.action.join(", "));
-            println!("   B: {}", s.actions.bonus.join(", "));
-            println!("   R: {}", s.actions.reaction.join(", "));
+            println!("   A: {}", rules::play::Actions::names(&s.actions.action).join(", "));
+            println!("   B: {}", rules::play::Actions::names(&s.actions.bonus).join(", "));
+            println!("   R: {}", rules::play::Actions::names(&s.actions.reaction).join(", "));
         }
     }
 }

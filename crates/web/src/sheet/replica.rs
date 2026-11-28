@@ -1008,12 +1008,12 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
     g.title_rule(226.7, 182.2, 360.1);
     // Two lines per attack: the roll on top, what to remember below.
     const COLS: [(f32, f32, &str); 6] = [
-        (228.2, 92.0, "Name"),
-        (323.4, 23.0, "Abil."),
-        (350.0, 44.0, "Range"),
-        (397.0, 38.0, "Atk / DC"),
-        (438.0, 52.0, "Damage"),
-        (493.0, 92.5, "Type"),
+        (228.2, 96.0, "Name"),
+        (327.0, 23.0, "Abil."),
+        (353.5, 62.0, "Range"),
+        (418.0, 38.0, "Atk / DC"),
+        (459.0, 50.0, "Damage"),
+        (512.0, 73.5, "Type"),
     ];
     for (x, w, t) in COLS {
         g.text(x, 194.3, Font::Column, Anchor::Start, None, t);
@@ -1021,22 +1021,34 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
     }
     // Four attacks on the page; more continue on the continuation page.
     let rows = [212.6, 232.1, 251.5, 271.0];
+    // Never smaller than these (in sheet units, ~1pt): long text is cut with
+    // "…" and stays complete on the continuation page.
+    const MIN_VALUE: f32 = 6.6;
+    const MIN_NOTE: f32 = 5.6;
+    let mut clipped = Vec::new();
     for (i, y) in rows.iter().enumerate() {
         g.field(228.2, *y, 357.3);
-        for x in [321.8, 348.5, 395.5, 436.5, 491.5] {
+        for x in [325.6, 352.2, 416.8, 457.5, 510.5] {
             g.vline(x, y - 17.2, 9.6, 0.5, DIVIDER);
         }
         let Some(a) = s.attacks.get(i) else { continue };
         let bl = y - 9.4;
-        g.value(228.6, bl, 91.0, 7.8, Anchor::Start, &a.name);
-        g.diamond(327.2, bl - 2.4, 2.1, 0.5, a.proficient);
-        g.value(331.2, bl, 16.0, 6.6, Anchor::Start, a.ability.abbr());
-        g.value(350.4, bl, 43.5, 6.8, Anchor::Start, &a.range);
-        g.value(416.0, bl, 38.0, 7.8, Anchor::Middle, &a.to_hit());
-        g.value(438.4, bl, 51.5, 7.6, Anchor::Start, &a.dice);
-        g.value(493.4, bl, 92.0, 7.2, Anchor::Start, &a.damage_type);
-        g.note(228.6, y - 2.2, 356.5, 5.6, &a.notes);
+        g.value_min(228.6, bl, 95.0, 7.8, MIN_VALUE, Anchor::Start, &a.name);
+        g.diamond(330.8, bl - 2.4, 2.1, 0.5, a.proficient);
+        g.value_min(334.8, bl, 16.0, 6.6, MIN_VALUE, Anchor::Start, a.ability.abbr());
+        g.value_min(353.9, bl, 61.5, 6.8, MIN_VALUE, Anchor::Start, &a.range);
+        g.value_min(437.0, bl, 38.0, 7.8, MIN_VALUE, Anchor::Middle, &a.to_hit());
+        g.value_min(459.4, bl, 49.5, 7.6, MIN_VALUE, Anchor::Start, &a.dice);
+        g.value_min(512.4, bl, 73.0, 7.2, MIN_VALUE, Anchor::Start, &a.damage_type);
+        g.note(228.6, y - 2.2, 356.5, 6.2, MIN_NOTE, &a.notes);
+        let fits = |t: &str, size: f32, w: f32| art::text_width(t, art::fit(t, size, w, MIN_VALUE)) <= w;
+        let note_fits = art::text_width(&a.notes, art::fit(&a.notes, 6.2, 356.5, MIN_NOTE)) <= 356.5;
+        if !(fits(&a.name, 7.8, 95.0) && fits(&a.range, 6.8, 61.5) && fits(&a.dice, 7.6, 49.5) && fits(&a.damage_type, 7.2, 73.0) && note_fits) {
+            clipped.push(a.clone());
+        }
     }
+    // Rows cut short on the page are repeated in full on the continuation page.
+    of.attacks.extend(clipped);
     of.attacks
         .extend(s.attacks.iter().skip(rows.len()).cloned());
 
@@ -1044,8 +1056,11 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
     g.frame(222.6, 289.7, 368.4, 99.3, [Chamfer(6.0), Square, Square, Square]);
     g.text(406.8, 301.9, Font::Head, Anchor::Middle, None, "ACTIONS");
     g.title_rule(226.7, 308.1, 360.1);
+    g.text(586.0, 301.9, Font::Column, Anchor::End, None, "spells in italics");
     let a = &s.actions;
     let col_w = 116.0;
+    // Damage cantrips already in the weapons rows aren't repeated here.
+    let shown_attacks: Vec<&str> = s.attacks.iter().take(4).map(|a| a.name.as_str()).collect();
     for (i, (title, list)) in [("Actions", &a.action), ("Bonus Actions", &a.bonus), ("Reactions", &a.reaction)].into_iter().enumerate() {
         let x = 228.2 + i as f32 * (col_w + 5.0);
         if i > 0 {
@@ -1053,18 +1068,11 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         }
         g.text(x, 316.6, Font::Column, Anchor::Start, None, title);
         g.hline(x, 317.7, col_w - 2.0, 0.25, FIELD);
-        // One per line while they fit; a long list (a paladin's smites) flows
-        // as a paragraph so the column keeps a readable size.
-        if list.len() <= 6 {
-            let items: Vec<Item> = list.iter().map(|n| Item { name: n.clone(), tag: String::new(), detail: String::new() }).collect();
-            let (h, rest) = list_box(x, 319.5, col_w - 2.0, 66.5, 1, 0.0, items, title);
-            html.push_str(&h.replace("<b>", "").replace("</b>", ""));
-            push_items(of, title, rest);
-        } else {
-            let (h, rest) = text_box(x, 319.5, col_w - 2.0, 66.5, &[("", list.join(", "))], title);
-            html.push_str(&h);
-            of.sections.extend(rest.into_iter().map(|(_, t)| (title.to_string(), esc(&t))));
-        }
+        let entries: Vec<&rules::play::ActionEntry> =
+            list.iter().filter(|e| e.spell.is_none() || !shown_attacks.contains(&e.name.as_str())).collect();
+        let (h, leftover) = action_column(x, 319.5, col_w - 2.0, 66.5, &entries, title);
+        html.push_str(&h);
+        push_items(of, title, leftover);
     }
 
     // Class features and species traits & feats, side by side to the bottom.
@@ -1185,7 +1193,9 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         g.diamond_tail(x, 648.65, 4.14, has(key));
         g.text(tx, 650.9, Font::Text, Anchor::Start, Some(w), t);
     }
-    let sections: [(f32, f32, &str, f32, &str, &Vec<String>, &str); 3] = [
+    // (rule y, text height, label, label width, aria label, list, continuation title)
+    type Section<'a> = (f32, f32, &'a str, f32, &'a str, &'a Vec<String>, &'a str);
+    let sections: [Section; 3] = [
         (658.8, 22.0 + e3, "weapons", 35.8, "Weapon proficiencies", &s.weapon_profs, "Weapon Proficiencies"),
         (692.5 + e3, 18.0 + e3, "tools", 23.8, "Tool proficiencies", &s.tool_profs, "Tool Proficiencies"),
         (722.4 + 2.0 * e3, 27.5 + e3, "languages", 44.0, "Languages", &s.languages, "Languages"),
@@ -1202,6 +1212,54 @@ pub fn page1(ch: &Character, s: &Sheet, of: &mut Overflow, ext: f32) -> Page {
         svg: art::svg_page(&g.0, &format!("Character sheet page 1 for {}", s.name), art::H + ext),
         html,
     }
+}
+
+/// One column of the Actions box, filled in order until it is full, never
+/// below a readable size. Up to six entries are one per line; more flow as
+/// a paragraph. Spells are in italics. Returns the HTML and the features
+/// that didn't fit (spells that don't fit are on page 2 anyway, so they
+/// are only counted).
+fn action_column(x: f32, y: f32, w: f32, h: f32, entries: &[&rules::play::ActionEntry], label: &str) -> (String, Vec<Item>) {
+    const MIN: f32 = 6.6;
+    let name_html = |e: &rules::play::ActionEntry| if e.spell.is_some() { format!("<i>{}</i>", esc(&e.name)) } else { esc(&e.name) };
+    let more_note = |n: usize| if n > 0 { format!("+{n} more spell{} (page 2)", if n > 1 { "s" } else { "" }) } else { String::new() };
+    let lines_h = |lines: f32, size: f32| (lines + 0.25) * size * 1.17;
+    // One per line.
+    if entries.len() <= 6 {
+        for size in [7.5, 7.0, MIN] {
+            let lines: f32 = entries.iter().map(|e| (text_width(&e.name, size) / w).ceil().max(1.0)).sum();
+            if lines_h(lines, size) <= h {
+                let inner: String = entries.iter().map(|e| format!("<p>{}</p>", name_html(e))).collect();
+                return (html_box(x, y, w, h, size, "text", &inner, label), vec![]);
+            }
+        }
+    }
+    // A paragraph: the first k entries, plus a note for what's left.
+    let para = |k: usize| {
+        let mut t: Vec<String> = entries[..k].iter().map(|e| e.name.clone()).collect();
+        let more = entries[k..].iter().filter(|e| e.spell.is_some()).count();
+        if more > 0 {
+            t.push(more_note(more));
+        }
+        t.join(", ")
+    };
+    let fits = |k: usize, size: f32| lines_h((text_width(&para(k), size) / w).ceil().max(1.0), size) <= h;
+    let (size, k) = [7.5, 7.0, MIN]
+        .into_iter()
+        .find_map(|size| fits(entries.len(), size).then_some((size, entries.len())))
+        .unwrap_or_else(|| (MIN, (0..=entries.len()).rev().find(|&k| fits(k, MIN)).unwrap_or(0)));
+    let mut parts: Vec<String> = entries[..k].iter().map(|e| name_html(e)).collect();
+    let more = entries[k..].iter().filter(|e| e.spell.is_some()).count();
+    if more > 0 {
+        parts.push(format!(r#"<span class="more">{}</span>"#, esc(&more_note(more))));
+    }
+    let inner = format!("<p>{}</p>", parts.join(", "));
+    let leftover = entries[k..]
+        .iter()
+        .filter(|e| e.spell.is_none())
+        .map(|e| Item { name: e.name.clone(), tag: String::new(), detail: String::new() })
+        .collect();
+    (html_box(x, y, w, h, size, "text", &inner, label), leftover)
 }
 
 fn push_items(of: &mut Overflow, title: &str, items: Vec<Item>) {

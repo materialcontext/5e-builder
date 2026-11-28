@@ -154,6 +154,10 @@ input[type=checkbox] { width: 20px; height: 20px; margin: 2px; accent-color: var
   display: inline-flex; align-items: center; gap: var(--s1); font-size: .75rem; font-weight: 600; line-height: 1.2;
   padding: 3px var(--s2); border-radius: 99px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); margin-left: var(--s1);
 }
+.action-spells { list-style: none; margin: 0 0 var(--s3); padding: 0; display: grid; gap: var(--s1); }
+.action-spell { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s1) var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); flex-wrap: wrap; }
+.action-spell-name { min-width: 0; }
+.action-spell-group { font-size: 1rem; margin: var(--s3) 0 var(--s1); }
 .stale-banner { background: var(--warn-soft); color: var(--warn); padding: var(--s2) var(--s4); font-size: .9rem; line-height: 1.4; }
 .stale-banner code { font-size: .85em; overflow-wrap: anywhere; }
 .badge.warn, .chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }

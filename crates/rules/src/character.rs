@@ -34,6 +34,9 @@ pub struct Character {
     /// rewards, homebrew): ability adjustments, proficiencies, feats, spells,
     /// features, bonuses. Applied like any other grant, labelled "Custom".
     pub custom: Vec<compendium::Grant>,
+    /// Spells the player always wants (true) or never wants (false) in the
+    /// sheet's Actions box, by spell key. Others are placed automatically.
+    pub action_spells: BTreeMap<String, bool>,
     pub created: String,
     pub updated: String,
 }
@@ -57,6 +60,7 @@ impl Default for Character {
             starting_signature: String::new(),
             starting_coins_cp: 0,
             custom: Vec::new(),
+            action_spells: BTreeMap::new(),
             created: String::new(),
             updated: String::new(),
         }

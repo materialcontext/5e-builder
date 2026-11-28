@@ -103,6 +103,27 @@ pub fn text_width(s: &str, size: f32) -> f32 {
 }
 
 /// Largest size ≤ `size` (down to `min`) at which `s` fits in `w`.
+/// `s` cut at a word (or character) boundary with "…" so it fits `w` at `size`.
+pub fn clip(s: &str, size: f32, w: f32) -> String {
+    if text_width(s, size) <= w {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    for ch in s.chars() {
+        if text_width(&format!("{out}{ch}…"), size) > w {
+            break;
+        }
+        out.push(ch);
+    }
+    // Prefer ending at a word boundary when one is reasonably close.
+    if let Some(i) = out.rfind([' ', ',']) {
+        if i * 4 > out.len() * 3 {
+            out.truncate(i);
+        }
+    }
+    format!("{}…", out.trim_end_matches([' ', ',']))
+}
+
 pub fn fit(s: &str, size: f32, w: f32, min: f32) -> f32 {
     let natural = text_width(s, size);
     if natural <= w {
@@ -196,17 +217,31 @@ impl Svg {
     }
 
     /// A secondary line under a value (grey italic): properties, notes.
-    pub fn note(&mut self, x: f32, y: f32, w: f32, size: f32, s: &str) {
+    /// Never smaller than `min`: what doesn't fit is cut with "…".
+    pub fn note(&mut self, x: f32, y: f32, w: f32, size: f32, min: f32, s: &str) {
         if s.is_empty() {
             return;
         }
-        let sz = fit(s, size, w, size.min(4.6));
-        let squeeze = if text_width(s, sz) > w * 1.02 {
-            format!(r#" textLength="{w}" lengthAdjust="spacingAndGlyphs""#)
-        } else {
-            String::new()
+        let sz = fit(s, size, w, min);
+        let t = clip(s, sz, w);
+        let _ = write!(self.0, r#"<text x="{x}" y="{y}" class="note" style="font-size:{sz:.2}px">{}</text>"#, esc(&t));
+    }
+
+    /// Like [`Svg::value`], but never smaller than `min`: what doesn't fit is
+    /// cut with "…" instead of shrunk or squeezed.
+    #[allow(clippy::too_many_arguments)]
+    pub fn value_min(&mut self, x: f32, y: f32, w: f32, size: f32, min: f32, anchor: Anchor, s: &str) {
+        if s.is_empty() {
+            return;
+        }
+        let sz = fit(s, size, w, min);
+        let t = clip(s, sz, w);
+        let a = match anchor {
+            Anchor::Start => "",
+            Anchor::Middle => r#" text-anchor="middle""#,
+            Anchor::End => r#" text-anchor="end""#,
         };
-        let _ = write!(self.0, r#"<text x="{x}" y="{y}" class="note"{squeeze} style="font-size:{sz:.2}px">{}</text>"#, esc(s));
+        let _ = write!(self.0, r#"<text x="{x}" y="{y}" class="v"{a} style="font-size:{sz:.2}px">{}</text>"#, esc(&t));
     }
 
     /// The sheet's four-pointed concave "diamond" marker, centred on (cx, cy)

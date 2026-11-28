@@ -34,18 +34,80 @@ impl LimitedUse {
     }
 }
 
-/// Things to do with each kind of action, beyond the attacks listed with weapons.
+/// Things to do with each kind of action, beyond the attacks listed with
+/// weapons. Each column is in the order it should fill a limited space:
+/// spells the player pinned, then features, then other spells by
+/// [`spell_rank`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Actions {
-    pub action: Vec<String>,
-    pub bonus: Vec<String>,
-    pub reaction: Vec<String>,
+    pub action: Vec<ActionEntry>,
+    pub bonus: Vec<ActionEntry>,
+    pub reaction: Vec<ActionEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActionEntry {
+    pub name: String,
+    /// The spell, for spells (features and other actions have none).
+    pub spell: Option<compendium::Key>,
+    /// The player asked for this spell to always be shown.
+    pub pinned: bool,
+}
+
+impl ActionEntry {
+    fn feature(name: &str) -> Self {
+        ActionEntry { name: name.to_string(), spell: None, pinned: false }
+    }
 }
 
 impl Actions {
     pub fn is_empty(&self) -> bool {
         self.action.is_empty() && self.bonus.is_empty() && self.reaction.is_empty()
     }
+
+    /// Names in a column, in order.
+    pub fn names(list: &[ActionEntry]) -> Vec<&str> {
+        list.iter().map(|e| e.name.as_str()).collect()
+    }
+}
+
+/// Which Actions column a spell goes in, by casting time; None for spells
+/// that take longer than an action (rituals, 1 minute, ...).
+pub fn spell_column(time: &str) -> Option<ActionKind> {
+    let t = time.to_lowercase();
+    if t.contains("bonus action") {
+        Some(ActionKind::Bonus)
+    } else if t.contains("reaction") {
+        Some(ActionKind::Reaction)
+    } else if t.starts_with("1 action") || t.starts_with("action") {
+        Some(ActionKind::Action)
+    } else {
+        None
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActionKind {
+    Action,
+    Bonus,
+    Reaction,
+}
+
+/// Default order for spells in the Actions box (lower first): free casts,
+/// then spells that attack, force a save, deal damage or heal, strongest
+/// first, then other spells, strongest first, then utility cantrips.
+pub fn spell_rank(spell: &compendium::Spell, mode: &SpellMode) -> (u8, std::cmp::Reverse<u8>, String) {
+    let free = matches!(mode, SpellMode::Innate(_));
+    let text = Entry::plain(&spell.body).to_lowercase();
+    let combat = !spell.attack.is_empty() || !spell.save.is_empty() || !spell.damage.is_empty() || text.contains("regains") || text.contains("hit points equal to");
+    let group = match (free, combat, spell.level) {
+        (true, _, _) => 0,
+        (false, true, 1..) => 1,
+        (false, false, 1..) => 2,
+        (false, true, 0) => 3,
+        (false, false, 0) => 4,
+    };
+    (group, std::cmp::Reverse(spell.level), spell.name.clone())
 }
 
 /// Class table columns that count uses, and the feature whose text says how
@@ -344,9 +406,9 @@ fn number_word(w: &str) -> Option<i32> {
 /// features by their rules text, spells by casting time.
 pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[FeatureEntry]) -> Actions {
     let mut a = Actions::default();
-    let push = |list: &mut Vec<String>, name: &str| {
-        if !list.iter().any(|x| x == name) {
-            list.push(name.to_string());
+    let push = |list: &mut Vec<ActionEntry>, e: ActionEntry| {
+        if !list.iter().any(|x| x.name == e.name) {
+            list.push(e);
         }
     };
     for f in features {
@@ -358,29 +420,13 @@ pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[Fea
         let t = Entry::plain(&f.feature.body).to_lowercase();
         let (action, bonus, reaction) = action_kinds(&t);
         if bonus {
-            push(&mut a.bonus, name);
+            push(&mut a.bonus, ActionEntry::feature(name));
         }
         if reaction {
-            push(&mut a.reaction, name);
+            push(&mut a.reaction, ActionEntry::feature(name));
         }
         if action && !bonus && !reaction {
-            push(&mut a.action, name);
-        }
-    }
-    // Spells the character can cast now (not spellbook-only), by casting time.
-    let mut spells: Vec<_> = build
-        .spells
-        .iter()
-        .filter(|k| k.mode != SpellMode::Spellbook)
-        .filter_map(|k| comp.spells.get(&k.key))
-        .collect();
-    spells.sort_by_key(|s| (s.level, s.name.clone()));
-    for s in spells {
-        let time = s.time.to_lowercase();
-        if time.contains("bonus action") {
-            push(&mut a.bonus, &s.name);
-        } else if time.contains("reaction") {
-            push(&mut a.reaction, &s.name);
+            push(&mut a.action, ActionEntry::feature(name));
         }
     }
     // Two Light weapons: the extra attack (2024 Light property) is a Bonus Action.
@@ -391,9 +437,43 @@ pub fn actions(ch: &Character, build: &Build, comp: &Compendium, features: &[Fea
         .filter(|it| it.weapon.as_ref().is_some_and(|w| !w.ranged && w.properties.iter().any(|p| p == "light")))
         .count();
     if light >= 2 {
-        push(&mut a.bonus, "Light weapon attack");
+        push(&mut a.bonus, ActionEntry::feature("Light weapon attack"));
     }
-    push(&mut a.reaction, "Opportunity Attack");
+    push(&mut a.reaction, ActionEntry::feature("Opportunity Attack"));
+
+    // Spells the character can cast now (not spellbook-only), by casting time:
+    // pinned ones first, then after the features in the default order.
+    let mut spells: Vec<(&compendium::Spell, &SpellMode)> = Vec::new();
+    for k in build.spells.iter().filter(|k| k.mode != SpellMode::Spellbook) {
+        let Some(s) = comp.spells.get(&k.key) else { continue };
+        if ch.action_spells.get(k.key.as_str()) == Some(&false) || spells.iter().any(|(x, _)| x.key == s.key) {
+            continue;
+        }
+        spells.push((s, &k.mode));
+    }
+    spells.sort_by_key(|(s, mode)| spell_rank(s, mode));
+    let mut pinned = Actions::default();
+    for (s, _) in spells {
+        let Some(kind) = spell_column(&s.time) else { continue };
+        let is_pinned = ch.action_spells.get(s.key.as_str()) == Some(&true);
+        let e = ActionEntry { name: s.name.clone(), spell: Some(s.key.clone()), pinned: is_pinned };
+        let (target, pin_target) = match kind {
+            ActionKind::Action => (&mut a.action, &mut pinned.action),
+            ActionKind::Bonus => (&mut a.bonus, &mut pinned.bonus),
+            ActionKind::Reaction => (&mut a.reaction, &mut pinned.reaction),
+        };
+        if is_pinned {
+            pin_target.push(e);
+        } else {
+            push(target, e);
+        }
+    }
+    for (list, pins) in [(&mut a.action, pinned.action), (&mut a.bonus, pinned.bonus), (&mut a.reaction, pinned.reaction)] {
+        let rest = std::mem::take(list);
+        let pinned_names: Vec<String> = pins.iter().map(|p| p.name.clone()).collect();
+        *list = pins;
+        list.extend(rest.into_iter().filter(|e| !pinned_names.contains(&e.name)));
+    }
     a
 }
 

@@ -289,6 +289,75 @@ pub fn CustomStep() -> impl IntoView {
         .into_any()
     };
 
+    // ---- which spells go in the sheet's Actions box
+    let action_spells = move || {
+        let comp = ctx.comp.get_value();
+        let prefs = ctx.ch.with(|c| c.action_spells.clone());
+        // (spell key, name, "Level 2")
+        type Row = (String, String, String);
+        let mut groups: [(&str, Vec<Row>); 3] = [("Actions", vec![]), ("Bonus actions", vec![]), ("Reactions", vec![])];
+        ctx.build.with(|b| {
+            let mut spells: Vec<_> = b
+                .spells
+                .iter()
+                .filter(|k| k.mode != rules::build::SpellMode::Spellbook)
+                .filter_map(|k| comp.spells.get(&k.key).map(|s| (s, k.mode.clone())))
+                .collect();
+            spells.sort_by_key(|(s, mode)| rules::play::spell_rank(s, mode));
+            spells.dedup_by(|a, b| a.0.key == b.0.key);
+            for (s, _) in spells {
+                let i = match rules::play::spell_column(&s.time) {
+                    Some(rules::play::ActionKind::Action) => 0,
+                    Some(rules::play::ActionKind::Bonus) => 1,
+                    Some(rules::play::ActionKind::Reaction) => 2,
+                    None => continue,
+                };
+                let level = if s.level == 0 { "Cantrip".to_string() } else { format!("Level {}", s.level) };
+                groups[i].1.push((s.key.0.clone(), s.name.clone(), level));
+            }
+        });
+        if groups.iter().all(|(_, v)| v.is_empty()) {
+            return view! { <p class="muted">"No spells cast with an action, bonus action or reaction yet."</p> }.into_any();
+        }
+        groups
+            .into_iter()
+            .filter(|(_, v)| !v.is_empty())
+            .map(|(title, rows)| {
+                let rows = rows
+                    .into_iter()
+                    .map(|(key, name, level)| {
+                        let state = match prefs.get(&key) {
+                            Some(true) => "always",
+                            Some(false) => "never",
+                            None => "auto",
+                        };
+                        let k = key.clone();
+                        view! {
+                            <li class="action-spell">
+                                <span class="action-spell-name">{name.clone()}<span class="muted small">{format!(" · {level}")}</span></span>
+                                <select aria-label=format!("{name} in the Actions box") prop:value=state on:change=move |ev| {
+                                    let v = event_target_value(&ev);
+                                    let k = k.clone();
+                                    ctx.edit(move |c| match v.as_str() {
+                                        "always" => { c.action_spells.insert(k, true); }
+                                        "never" => { c.action_spells.insert(k, false); }
+                                        _ => { c.action_spells.remove(&k); }
+                                    });
+                                }>
+                                    <option value="auto" selected=state == "auto">"Automatic"</option>
+                                    <option value="always" selected=state == "always">"Always show"</option>
+                                    <option value="never" selected=state == "never">"Never show"</option>
+                                </select>
+                            </li>
+                        }
+                    })
+                    .collect_view();
+                view! { <h3 class="action-spell-group">{title}</h3><ul class="action-spells">{rows}</ul> }
+            })
+            .collect_view()
+            .into_any()
+    };
+
     view! {
         <div class="note custom-intro">
             <p><strong>"This page is for anything the rules as written don't cover."</strong></p>
@@ -353,6 +422,10 @@ pub fn CustomStep() -> impl IntoView {
             </select>
         </label>
         {move || view! { <div class="record-list">{option_list(spell_items, vec![], 1, add_spell, spell_state, "custom-spells")}</div> }}
+
+        <h2>"Spells in the Actions box"</h2>
+        <p class="muted">"Page one lists what you can do with an action, a bonus action and a reaction, spells included. Space is limited, so each column fills in order: spells you set to always show, then your features, then other spells (free casts first, then spells that attack, force a save, deal damage or heal, strongest first, then the rest). Spells that don't fit are counted, and all of them are on the spell page. They're listed here in that order."</p>
+        {action_spells}
 
         <h2>"Your own features"</h2>
         <p class="muted">"Anything else — a boon, a curse, a magic tattoo, a house rule. It's printed with your feats and traits."</p>
